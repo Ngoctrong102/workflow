@@ -1,0 +1,153 @@
+# Cursor Rules for Travel Equipment Rental Application
+
+This file imports all rule modules. See individual rule files for detailed guidelines.
+
+## 🚨 CRITICAL: File Placement Rules (ALWAYS ENFORCED)
+
+**BEFORE creating ANY file, you MUST:**
+
+1. ✅ Read `.cursor/rules/structure.md` for file placement rules
+2. ✅ Identify the file type (documentation, code, script, config, test)
+3. ✅ Determine the correct directory from the rules
+4. ✅ Verify the file does NOT belong in project root (unless explicitly allowed)
+5. ✅ Create the file in the correct location from the start
+
+**PROJECT ROOT - ONLY THESE FILES ALLOWED:**
+- ✅ `README.md` (main project README)
+- ✅ `.cursorrules` (this file)
+- ✅ `.cursor/rules/` (rule modules directory)
+- ✅ `.gitignore` (Git ignore rules)
+- ✅ `.env.example`, `.editorconfig` (if needed)
+
+**EVERYTHING ELSE MUST BE IN APPROPRIATE DIRECTORIES:**
+- ❌ Scripts → `scripts/` (NOT root)
+- ❌ Documentation → `docs/` (NOT root, except README.md)
+- ❌ Code → `backend/src/` or `frontend/src/` (NOT root)
+- ❌ Docker files → `backend/` (NOT root)
+- ❌ Tests → Test directories (NOT root)
+
+**If you create a file in the wrong location, you MUST move it immediately before proceeding.**
+
+## Rule Modules
+
+- **Documentation Rules**: See `.cursor/rules/docs.md`
+- **Project Structure Rules**: See `.cursor/rules/structure.md` ⚠️ **READ THIS FIRST**
+- **Code Quality Rules**: See `.cursor/rules/code-quality.md`
+
+## 👥 Multi-Agent Role Rules
+
+This project uses a 5-role system. **YOU MUST identify your role before starting work:**
+
+- **Requirements Analyst**: See `.cursor/rules/requirements-analyst.md`
+  - **Workspace**: `docs/`, `.cursor/rules/`, root files only (README.md, .cursorrules, .gitignore, .env.example, .editorconfig)
+  - **FORBIDDEN**: `frontend/`, `backend/`, `quality_verification/`, `infrastructure/`, any code files
+  - Creates documentation, defines expectations
+  - **NEVER modifies code files or expert workspaces**
+
+- **Frontend Expert**: See `.cursor/rules/frontend-expert.md`
+  - **Workspace**: `frontend/` directory ONLY (and `quality_verification/bugs-frontend/` for bug responses)
+  - **FORBIDDEN**: `docs/`, `backend/`, `quality_verification/` (except bugs-frontend), `infrastructure/`, root directory, `.cursor/rules/`
+  - Implements UI based on documentation
+  - Works with QE Expert for quality verification
+  - **NEVER modifies backend code or documentation**
+
+- **Backend Expert**: See `.cursor/rules/backend-expert.md`
+  - **Workspace**: `backend/` directory ONLY (and `quality_verification/bugs-backend/` for bug responses)
+  - **FORBIDDEN**: `docs/`, `frontend/`, `quality_verification/` (except bugs-backend), `infrastructure/`, root directory, `.cursor/rules/`
+  - Implements APIs based on documentation
+  - Works with QE Expert for quality verification
+  - **NEVER modifies frontend code or documentation**
+
+- **QE Expert**: See `.cursor/rules/qe-expert.md`
+  - **Workspace**: `quality_verification/` directory ONLY
+  - **FORBIDDEN**: `docs/`, `frontend/`, `backend/`, `infrastructure/`, root directory, `.cursor/rules/`
+  - Tests Frontend and Backend implementations
+  - Verifies integration and documentation compliance
+  - Creates bug files for Frontend, Backend, and DevOps experts
+  - **NEVER modifies code or documentation**
+
+- **DevOps Expert**: See `.cursor/rules/devops-expert.md`
+  - **Workspace**: `infrastructure/` directory, CI/CD configs (`.github/workflows/`, `.gitlab-ci.yml`, etc.), Docker files (coordinate with Backend/Frontend), `.env.example` (root level)
+  - **FORBIDDEN**: `docs/`, `frontend/src/`, `backend/src/`, `quality_verification/` (except bugs-devops), root directory (except allowed files), `.cursor/rules/`
+  - Sets up infrastructure, CI/CD, deployment, monitoring
+  - Coordinates with Backend and Frontend experts for Docker configurations
+  - **NEVER modifies application code or documentation**
+
+**🚨 CRITICAL WORKSPACE BOUNDARIES - STRICTLY ENFORCED:**
+
+1. **Requirements Analyst**:
+   - ✅ CAN: Create/modify files in `docs/`, `.cursor/rules/`, root allowed files
+   - ❌ CANNOT: Touch `frontend/`, `backend/`, `quality_verification/`, `infrastructure/`, any code files
+
+2. **Frontend Expert**:
+   - ✅ CAN: Create/modify files in `frontend/`, edit `quality_verification/bugs-frontend/`
+   - ❌ CANNOT: Touch `docs/`, `backend/`, `quality_verification/bugs-backend/`, `infrastructure/`, root, `.cursor/rules/`
+
+3. **Backend Expert**:
+   - ✅ CAN: Create/modify files in `backend/`, edit `quality_verification/bugs-backend/`
+   - ❌ CANNOT: Touch `docs/`, `frontend/`, `quality_verification/bugs-frontend/`, `infrastructure/`, root, `.cursor/rules/`
+
+4. **QE Expert**:
+   - ✅ CAN: Create/modify files in `quality_verification/`
+   - ❌ CANNOT: Touch `docs/`, `frontend/`, `backend/`, `infrastructure/`, root, `.cursor/rules/`
+
+5. **DevOps Expert**:
+   - ✅ CAN: Create/modify files in `infrastructure/`, CI/CD configs, Docker files (coordinate with Backend/Frontend), `.env.example`
+   - ❌ CANNOT: Touch `docs/`, `frontend/src/`, `backend/src/`, `quality_verification/bugs-frontend/`, `quality_verification/bugs-backend/`, root (except allowed files), `.cursor/rules/`
+
+**Violating these boundaries will cause integration issues and is STRICTLY FORBIDDEN.**
+
+## Quick Reference
+
+### Documentation
+- Always check `docs/README.md` first
+- Use `@import()` system for loading documentation context
+- Follow pattern-based imports for flexibility
+
+### Documentation Change Tracking
+**IMPORTANT**: Experts should track documentation changes to focus on updates:
+- Before starting work: `node scripts/docs-tracker.js compare [role]`
+- After completing work: `node scripts/docs-tracker.js save [role]`
+- See `scripts/README.md` for details
+- Each expert rule file includes tracking instructions
+
+### Project Structure (CRITICAL)
+- **Scripts** → `scripts/` (NEVER in root)
+- **Documentation** → `docs/` or subdirectories (NEVER in root except README.md)
+- **Code** → `backend/internal/` or `backend/cmd/` (Go) or `frontend/src/` (React) (NEVER in root)
+- **Docker files** → `backend/` (docker-compose.yml, .dockerignore)
+- **Mock servers** → `mock-server/` (with subdirectories: `api/`, `ekyc/`, `payment-gateway/`)
+- **Tests** → Test directories (NEVER in root)
+
+### Code Quality
+- Follow documentation specifications
+- Use Shadcn/ui for frontend components
+- Follow Go and Gin best practices for backend
+- Maintain test coverage
+
+## Import Rule Files
+
+When working on specific areas, reference the appropriate rule file:
+- **Working with documentation?** → See `.cursor/rules/docs.md`
+- **Organizing files?** → See `.cursor/rules/structure.md` ⚠️ **MANDATORY**
+- **Writing code?** → See `.cursor/rules/code-quality.md`
+
+## File Creation Workflow
+
+**MANDATORY STEPS for creating ANY file:**
+
+```
+1. Identify file type
+   ↓
+2. Read .cursor/rules/structure.md for placement rules
+   ↓
+3. Determine correct directory
+   ↓
+4. Verify NOT in root (unless explicitly allowed)
+   ↓
+5. Create file in correct location
+   ↓
+6. If created in wrong location, MOVE IMMEDIATELY
+```
+
+**NO EXCEPTIONS. NO SHORTCUTS.**
