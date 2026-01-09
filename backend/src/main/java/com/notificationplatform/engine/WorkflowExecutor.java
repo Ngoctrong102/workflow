@@ -4,6 +4,7 @@ import com.notificationplatform.entity.Execution;
 import com.notificationplatform.entity.NodeExecution;
 import com.notificationplatform.entity.Workflow;
 import com.notificationplatform.entity.enums.ExecutionStatus;
+import com.notificationplatform.entity.enums.NodeExecutionStatus;
 import com.notificationplatform.entity.enums.NodeType;
 import com.notificationplatform.repository.ExecutionRepository;
 import com.notificationplatform.repository.NodeExecutionRepository;
@@ -150,7 +151,7 @@ public class WorkflowExecutor {
             String nodeTypeStr = (String) node.get("type");
             if (nodeTypeStr == null) {
                 log.warn("Node type is missing for node: {}", nodeId);
-                createNodeExecution(execution, nodeId, "failed", null, null, 
+                createNodeExecution(execution, nodeId, NodeExecutionStatus.FAILED.getValue(), null, null, 
                                   "Node type is missing");
                 return 0;
             }
@@ -162,7 +163,7 @@ public class WorkflowExecutor {
                 nodeType = NodeType.valueOf(enumName);
             } catch (IllegalArgumentException e) {
                 log.warn("Invalid node type: {} for node: {}", nodeTypeStr, nodeId);
-                createNodeExecution(execution, nodeId, "failed", null, null, 
+                createNodeExecution(execution, nodeId, NodeExecutionStatus.FAILED.getValue(), null, null, 
                                   "Invalid node type: " + nodeTypeStr);
                 return 0;
             }
@@ -173,13 +174,13 @@ public class WorkflowExecutor {
             if (executor == null) {
                 log.warn("No executor found for node type: {}", nodeType);
                 // Create failed node execution record
-                createNodeExecution(execution, nodeId, "failed", null, null, 
+                createNodeExecution(execution, nodeId, NodeExecutionStatus.FAILED.getValue(), null, null, 
                                   "No executor found for node type: " + nodeType);
                 return 0;
             }
 
             // Create node execution record
-            NodeExecution nodeExecution = createNodeExecution(execution, nodeId, "running", 
+            NodeExecution nodeExecution = createNodeExecution(execution, nodeId, NodeExecutionStatus.RUNNING.getValue(), 
                                                             context.getDataForNode(nodeId), null, null);
 
             long startTime = System.currentTimeMillis();
@@ -197,7 +198,7 @@ public class WorkflowExecutor {
                 // Check if node is waiting for events
                 if (result.isWaiting()) {
                     // Node is waiting for events, mark as waiting
-                    nodeExecution.setStatus("waiting");
+                    nodeExecution.setStatus(NodeExecutionStatus.WAITING);
                     nodeExecution.setOutputData(result.getOutput());
                     context.setNodeOutput(nodeId, result.getOutput());
                     
@@ -220,12 +221,12 @@ public class WorkflowExecutor {
                     return 1;
                 } else {
                     // Node completed normally
-                    nodeExecution.setStatus("completed");
+                    nodeExecution.setStatus(NodeExecutionStatus.COMPLETED);
                     nodeExecution.setOutputData(result.getOutput());
                     context.setNodeOutput(nodeId, result.getOutput());
                 }
             } else {
-                nodeExecution.setStatus("failed");
+                nodeExecution.setStatus(NodeExecutionStatus.FAILED);
                 nodeExecution.setError(result.getError());
             }
             nodeExecution.setCompletedAt(LocalDateTime.now());
@@ -375,8 +376,8 @@ public class WorkflowExecutor {
             boolean nodeExecutionUpdated = false;
             for (com.notificationplatform.entity.NodeExecution nodeExecution : nodeExecutions) {
                 if (nodeId.equals(nodeExecution.getNodeId()) && 
-                    ("waiting".equals(nodeExecution.getStatus()) || "waiting_for_events".equals(nodeExecution.getStatus()))) {
-                    nodeExecution.setStatus("completed");
+                    (NodeExecutionStatus.WAITING.equals(nodeExecution.getStatus()))) {
+                    nodeExecution.setStatus(NodeExecutionStatus.COMPLETED);
                     nodeExecution.setOutputData(aggregatedData);
                     nodeExecution.setCompletedAt(LocalDateTime.now());
                     
@@ -478,7 +479,7 @@ public class WorkflowExecutor {
         nodeExecution.setId(UUID.randomUUID().toString());
         nodeExecution.setExecution(execution);
         nodeExecution.setNodeId(nodeId);
-        nodeExecution.setStatus(status);
+        nodeExecution.setStatus(NodeExecutionStatus.fromValue(status));
         nodeExecution.setStartedAt(LocalDateTime.now());
         nodeExecution.setInputData(inputData);
         nodeExecution.setOutputData(outputData);

@@ -75,11 +75,9 @@ public class RetryExecutionService {
             return false;
         }
         
-        // Get node config and input data from retry context
+        // Get node config from retry context
         @SuppressWarnings("unchecked")
         Map<String, Object> nodeConfig = (Map<String, Object>) retryContext.get("nodeConfig");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> inputData = (Map<String, Object>) retryContext.get("inputData");
         
         // Get node executor
         String nodeTypeStr = nodeExecution.getNodeType();

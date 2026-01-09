@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
  * API triggers don't require special activation/deactivation logic
  * as they are handled directly by the API controller.
  */
-@Component
+@Component("apiTriggerHandlerLifecycle")
 @Slf4j
 public class ApiTriggerHandler implements TriggerHandler {
 

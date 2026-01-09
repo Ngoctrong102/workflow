@@ -45,9 +45,9 @@ public class ExecutionRecoveryService {
         LocalDateTime threshold = LocalDateTime.now().minus(LOCK_EXPIRATION_THRESHOLD);
         // Find by each status separately since findByStatusInAndUpdatedAtBefore doesn't exist
         List<Execution> stuckExecutions = new java.util.ArrayList<>();
-        stuckExecutions.addAll(executionRepository.findByStatus("running"));
-        stuckExecutions.addAll(executionRepository.findByStatus("waiting"));
-        stuckExecutions.addAll(executionRepository.findByStatus("paused"));
+        stuckExecutions.addAll(executionRepository.findByStatus(ExecutionStatus.RUNNING));
+        stuckExecutions.addAll(executionRepository.findByStatus(ExecutionStatus.WAITING));
+        stuckExecutions.addAll(executionRepository.findByStatus(ExecutionStatus.PAUSED));
         
         // Filter by updatedAt
         stuckExecutions = stuckExecutions.stream()

@@ -14,6 +14,24 @@ public interface EventAggregationService {
     ExecutionWaitState registerWaitState(String executionId, String nodeId, WaitForEventsConfigDTO config);
 
     /**
+     * Wait for multiple async events (convenience method that wraps registerWaitState)
+     * Creates wait state and returns correlation ID
+     */
+    ExecutionWaitState waitForEvents(String executionId, String nodeId, WaitForEventsConfigDTO config);
+
+    /**
+     * Aggregate events when all received
+     * Combines API response and Kafka event data into a single map
+     */
+    Map<String, Object> aggregateEvents(ExecutionWaitState waitState);
+
+    /**
+     * Handle individual event received (generic handler)
+     * Routes to appropriate handler based on event type
+     */
+    void handleEventReceived(String eventType, String executionId, String correlationId, Map<String, Object> eventData);
+
+    /**
      * Handle API response callback
      * Validates execution_id and correlation_id to prevent cross-execution contamination
      */

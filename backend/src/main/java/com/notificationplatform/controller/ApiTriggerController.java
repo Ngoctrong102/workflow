@@ -2,12 +2,12 @@ package com.notificationplatform.controller;
 
 import com.notificationplatform.dto.response.TriggerActivationResponse;
 import com.notificationplatform.service.trigger.api.ApiTriggerHandler;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletRequest;
 
-import java.util.HashMap;
 import java.util.Map;
 
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +25,7 @@ public class ApiTriggerController {
 
     private final ApiTriggerHandler apiTriggerHandler;
 
-    public ApiTriggerController(ApiTriggerHandler apiTriggerHandler) {
+    public ApiTriggerController(@Qualifier("apiTriggerRequestHandler") ApiTriggerHandler apiTriggerHandler) {
         this.apiTriggerHandler = apiTriggerHandler;
     }
 

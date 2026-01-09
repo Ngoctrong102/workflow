@@ -1,6 +1,5 @@
 package com.notificationplatform.service.trigger.factory;
 
-import com.notificationplatform.constants.ApplicationConstants;
 import com.notificationplatform.dto.request.CreateApiTriggerRequest;
 import com.notificationplatform.entity.Trigger;
 import com.notificationplatform.entity.enums.TriggerStatus;

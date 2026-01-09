@@ -1,15 +1,18 @@
 // Backend NodeType Enum - matches backend enum
-export enum NodeTypeEnum {
-  TRIGGER = "TRIGGER",
-  API_TRIGGER = "API_TRIGGER",
-  SCHEDULE_TRIGGER = "SCHEDULE_TRIGGER",
-  FILE_TRIGGER = "FILE_TRIGGER",
-  EVENT_TRIGGER = "EVENT_TRIGGER",
-  ACTION = "ACTION",
-  LOGIC = "LOGIC",
-  DATA = "DATA",
-  WAIT_EVENTS = "WAIT_EVENTS",
-}
+// Using const object instead of enum for erasableSyntaxOnly compatibility
+export const NodeTypeEnum = {
+  TRIGGER: "TRIGGER",
+  API_TRIGGER: "API_TRIGGER",
+  SCHEDULE_TRIGGER: "SCHEDULE_TRIGGER",
+  FILE_TRIGGER: "FILE_TRIGGER",
+  EVENT_TRIGGER: "EVENT_TRIGGER",
+  ACTION: "ACTION",
+  LOGIC: "LOGIC",
+  DATA: "DATA",
+  WAIT_EVENTS: "WAIT_EVENTS",
+} as const
+
+export type NodeTypeEnum = typeof NodeTypeEnum[keyof typeof NodeTypeEnum]
 
 // Helper functions to convert between enum and string format (kebab-case)
 // Backend uses toValue() to convert enum to kebab-case string

@@ -3,8 +3,10 @@ package com.notificationplatform.service.eventaggregation;
 import com.notificationplatform.dto.request.WaitForEventsConfigDTO;
 import com.notificationplatform.entity.Execution;
 import com.notificationplatform.entity.ExecutionWaitState;
+import com.notificationplatform.entity.NodeExecution;
 import com.notificationplatform.entity.Workflow;
 import com.notificationplatform.entity.enums.ExecutionStatus;
+import com.notificationplatform.entity.enums.NodeExecutionStatus;
 import com.notificationplatform.engine.WorkflowExecutor;
 import com.notificationplatform.exception.ResourceNotFoundException;
 import com.notificationplatform.repository.ExecutionRepository;
@@ -41,6 +43,42 @@ public class EventAggregationServiceImpl implements EventAggregationService {
         this.executionRepository = executionRepository;
         this.nodeExecutionRepository = nodeExecutionRepository;
         this.workflowExecutor = workflowExecutor;
+    }
+
+    @Override
+    public ExecutionWaitState waitForEvents(String executionId, String nodeId, WaitForEventsConfigDTO config) {
+        // Convenience method that wraps registerWaitState
+        return registerWaitState(executionId, nodeId, config);
+    }
+
+    @Override
+    public Map<String, Object> aggregateEvents(ExecutionWaitState waitState) {
+        // Public method that wraps aggregateEventData
+        return aggregateEventData(waitState);
+    }
+
+    @Override
+    public void handleEventReceived(String eventType, String executionId, String correlationId, Map<String, Object> eventData) {
+        log.debug("Handling event received: eventType={}, executionId={}, correlationId={}", 
+                  eventType, executionId, correlationId);
+
+        // Route to appropriate handler based on event type
+        switch (eventType != null ? eventType.toLowerCase() : "") {
+            case "api_response":
+            case "api":
+                handleApiResponse(executionId, correlationId, eventData);
+                break;
+            case "kafka_event":
+            case "kafka":
+                // Extract topic from eventData or use default
+                String topic = eventData.containsKey("_topic") ? 
+                        (String) eventData.get("_topic") : "default";
+                handleKafkaEvent(topic, eventData);
+                break;
+            default:
+                log.warn("Unknown event type: {}, executionId={}, correlationId={}", 
+                         eventType, executionId, correlationId);
+        }
     }
 
     @Override
@@ -578,11 +616,10 @@ public class EventAggregationServiceImpl implements EventAggregationService {
                 nodeExecutionRepository.findByExecutionIdAndNodeId(executionId, nodeId);
 
             boolean found = false;
-            for (com.notificationplatform.entity.NodeExecution nodeExecution : nodeExecutions) {
+            for (NodeExecution nodeExecution : nodeExecutions) {
                 if (nodeId.equals(nodeExecution.getNodeId()) && 
-                    ("waiting".equals(nodeExecution.getStatus()) || 
-                     "waiting_for_events".equals(nodeExecution.getStatus()))) {
-                    nodeExecution.setStatus("failed");
+                    (nodeExecution.getStatus() == NodeExecutionStatus.WAITING)) {
+                    nodeExecution.setStatus(NodeExecutionStatus.FAILED);
                     nodeExecution.setError(errorMessage);
                     nodeExecution.setCompletedAt(LocalDateTime.now());
                     

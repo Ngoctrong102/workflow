@@ -1,9 +1,8 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Plus, Edit2, Trash2, ChevronRight, ChevronDown, Code, Eye } from "lucide-react"
+import { Edit2, Trash2, ChevronRight, ChevronDown, Code, Eye } from "lucide-react"
 import type { FieldDefinition } from "@/utils/fieldTypeValidator"
 
 interface ObjectStructureViewProps {
@@ -16,7 +15,7 @@ interface ObjectStructureViewProps {
 
 export function ObjectStructureView({
   fields,
-  onAddField,
+  onAddField: _onAddField,
   onEditField,
   onDeleteField,
   objectName = "object",
@@ -84,7 +83,7 @@ export function ObjectStructureView({
     }
   }
 
-  const generateJSON = () => {
+  const _generateJSON = () => {
     const obj: Record<string, unknown> = {}
     fields.forEach((field) => {
       if (field.defaultValue !== undefined) {

@@ -3,6 +3,7 @@ import type {
   TemplateLibraryItem,
   TemplateLibraryListParams,
   TemplateLibraryListResponse,
+  TemplateCategory,
 } from "@/types/template-library"
 
 export const templateLibraryService = {

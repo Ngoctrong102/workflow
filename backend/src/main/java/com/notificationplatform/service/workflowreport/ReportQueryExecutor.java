@@ -141,7 +141,6 @@ public class ReportQueryExecutor {
         processed = processed.replace(":workflowId", "'" + escapeSql(workflowId) + "'");
 
         // Convert dates to timestamps in the specified timezone
-        ZoneId zoneId = timezone != null ? ZoneId.of(timezone) : ZoneId.of("UTC");
         Timestamp startTimestamp = Timestamp.valueOf(startDate);
         Timestamp endTimestamp = Timestamp.valueOf(endDate);
 

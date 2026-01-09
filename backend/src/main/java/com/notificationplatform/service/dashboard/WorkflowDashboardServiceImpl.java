@@ -13,6 +13,7 @@ import com.notificationplatform.entity.Delivery;
 import com.notificationplatform.entity.Execution;
 import com.notificationplatform.entity.NodeExecution;
 import com.notificationplatform.entity.Workflow;
+import com.notificationplatform.entity.enums.ExecutionStatus;
 import com.notificationplatform.exception.ResourceNotFoundException;
 import com.notificationplatform.repository.ChannelRepository;
 import com.notificationplatform.repository.DeliveryRepository;
@@ -90,11 +91,11 @@ public class WorkflowDashboardServiceImpl implements WorkflowDashboardService {
 
         long totalExecutions = executions.size();
         long successfulExecutions = executionRepository.countByWorkflowIdAndStatusAndDateRange(
-                workflowId, "completed", startUtc, endUtc);
+                workflowId, ExecutionStatus.COMPLETED.getValue(), startUtc, endUtc);
         long failedExecutions = executionRepository.countByWorkflowIdAndStatusAndDateRange(
-                workflowId, "failed", startUtc, endUtc);
+                workflowId, ExecutionStatus.FAILED.getValue(), startUtc, endUtc);
         long runningExecutions = executionRepository.countByWorkflowIdAndStatusAndDateRange(
-                workflowId, "running", startUtc, endUtc);
+                workflowId, ExecutionStatus.RUNNING.getValue(), startUtc, endUtc);
 
         Double averageExecutionTime = executionRepository.getAverageExecutionTime(workflowId, startUtc, endUtc);
         if (averageExecutionTime == null) {
@@ -458,9 +459,12 @@ public class WorkflowDashboardServiceImpl implements WorkflowDashboardService {
 
         // Filter by status
         if (status != null && !status.isEmpty()) {
-            executions = executions.stream()
-                    .filter(e -> status.equals(e.getStatus()))
-                    .collect(Collectors.toList());
+            ExecutionStatus statusEnum = ExecutionStatus.fromValue(status);
+            if (statusEnum != null) {
+                executions = executions.stream()
+                        .filter(e -> statusEnum.equals(e.getStatus()))
+                        .collect(Collectors.toList());
+            }
         }
 
         // Filter by trigger type

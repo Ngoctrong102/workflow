@@ -1,6 +1,5 @@
 package com.notificationplatform.dto.mapper;
 
-import com.notificationplatform.constants.ApplicationConstants;
 import com.notificationplatform.dto.request.CreateWorkflowRequest;
 import com.notificationplatform.dto.request.UpdateWorkflowRequest;
 import com.notificationplatform.dto.response.WorkflowResponse;
@@ -9,7 +8,6 @@ import com.notificationplatform.entity.enums.WorkflowStatus;
 import org.mapstruct.*;
 import org.mapstruct.factory.Mappers;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 

@@ -31,14 +31,24 @@ public class TriggerFactoryRegistry {
     @PostConstruct
     public void init() {
         for (TriggerFactory factory : factories) {
-            TriggerType type = factory.getSupportedType();
-            if (factoryMap.containsKey(type)) {
-                log.warn("Multiple factories found for trigger type: {}. Using: {}", 
-                        type, factory.getClass().getSimpleName());
+            try {
+                TriggerType type = factory.getSupportedType();
+                if (type == null) {
+                    log.warn("Factory {} returned null trigger type, skipping", factory.getClass().getSimpleName());
+                    continue;
+                }
+                if (factoryMap.containsKey(type)) {
+                    log.warn("Multiple factories found for trigger type: {}. Using: {}", 
+                            type, factory.getClass().getSimpleName());
+                }
+                factoryMap.put(type, factory);
+                log.debug("Registered trigger factory: {} for type: {}", 
+                        factory.getClass().getSimpleName(), type);
+            } catch (UnsupportedOperationException e) {
+                log.warn("Skipping factory {}: {}", factory.getClass().getSimpleName(), e.getMessage());
+            } catch (Exception e) {
+                log.error("Error initializing factory {}: {}", factory.getClass().getSimpleName(), e.getMessage(), e);
             }
-            factoryMap.put(type, factory);
-            log.debug("Registered trigger factory: {} for type: {}", 
-                    factory.getClass().getSimpleName(), type);
         }
         log.info("Initialized TriggerFactoryRegistry with {} factories", factoryMap.size());
     }
@@ -78,15 +88,15 @@ public class TriggerFactoryRegistry {
 
     /**
      * Create File trigger using appropriate factory.
-     * TODO: FILE_TRIGGER not yet supported in TriggerType enum
+     * File triggers use EVENT type with file-specific configuration.
      */
     public Trigger createFileTrigger(CreateFileTriggerRequest request) {
-        throw new UnsupportedOperationException("File trigger not yet supported");
-        // TriggerFactory factory = getFactory(TriggerType.FILE_TRIGGER);
-        // if (factory == null) {
-        //     throw new IllegalArgumentException("No factory found for File trigger type");
-        // }
-        // return factory.createFromFileRequest(request);
+        // Use EVENT factory for file triggers
+        TriggerFactory factory = getFactory(TriggerType.EVENT);
+        if (factory == null) {
+            throw new IllegalArgumentException("No factory found for Event trigger type (used for file triggers)");
+        }
+        return factory.createFromFileRequest(request);
     }
 
     /**

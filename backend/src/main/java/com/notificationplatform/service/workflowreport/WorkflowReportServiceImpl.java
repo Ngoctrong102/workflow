@@ -18,7 +18,6 @@ import com.notificationplatform.repository.WorkflowReportRepository;
 import com.notificationplatform.service.dashboard.WorkflowDashboardService;
 import com.notificationplatform.service.reportscheduling.ReportGeneratorService;
 import com.notificationplatform.service.trigger.schedule.CronValidator;
-import com.notificationplatform.service.workflowreport.ReportQueryExecutor;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 
@@ -569,11 +568,76 @@ public class WorkflowReportServiceImpl implements WorkflowReportService {
         return "/reports/" + fileName;
     }
 
+    @Override
+    public QueryValidationResponse validateQuery(String workflowId, String analystQuery) {
+        log.debug("Validating query for workflow: {}", workflowId);
+
+        // Validate workflow exists
+        workflowRepository.findByIdAndNotDeleted(workflowId)
+                .orElseThrow(() -> new ResourceNotFoundException("Workflow not found with id: " + workflowId));
+
+        // Validate query using ReportQueryExecutor
+        ReportQueryExecutor.QueryValidationResult result = reportQueryExecutor.validateQuery(analystQuery);
+
+        return new QueryValidationResponse(result.isValid(), result.getError());
+    }
+
+    @Override
+    public Resource downloadReport(String workflowId, String reportId) {
+        log.debug("Downloading report: workflowId={}, reportId={}", workflowId, reportId);
+
+        // Validate workflow exists
+        workflowRepository.findByIdAndNotDeleted(workflowId)
+                .orElseThrow(() -> new ResourceNotFoundException("Workflow not found with id: " + workflowId));
+
+        // Get report history
+        WorkflowReportHistory history = workflowReportHistoryRepository.findById(reportId)
+                .orElseThrow(() -> new ResourceNotFoundException("Report history not found with id: " + reportId));
+
+        // Verify report belongs to workflow
+        if (!history.getWorkflow().getId().equals(workflowId)) {
+            throw new ResourceNotFoundException("Report not found for workflow: " + workflowId);
+        }
+
+        // Get file path
+        String filePath = history.getFilePath();
+        if (filePath == null || filePath.isEmpty()) {
+            throw new ResourceNotFoundException("Report file not found");
+        }
+
+        // Load file as resource
+        // Note: In production, this should load from cloud storage (S3, etc.)
+        // For now, assume files are stored in local filesystem
+        java.io.File file = new java.io.File(filePath);
+        if (!file.exists()) {
+            throw new ResourceNotFoundException("Report file not found at path: " + filePath);
+        }
+
+        log.info("Downloading report file: workflowId={}, reportId={}, filePath={}", 
+                 workflowId, reportId, filePath);
+
+        return new FileSystemResource(file);
+    }
+
     private void sendReportEmail(WorkflowReport report, byte[] reportFile) {
+        // Log report delivery information
+        log.info("=== Report Delivery Log ===");
+        log.info("Workflow ID: {}", report.getWorkflow().getId());
+        log.info("Report Name: {}", report.getName());
+        log.info("Recipients: {}", report.getRecipients());
+        log.info("File Format: {}", report.getFormat());
+        log.info("File Size: {} bytes", reportFile.length);
+        log.info("File Size (KB): {} KB", reportFile.length / 1024.0);
+        log.info("Generated At: {}", java.time.LocalDateTime.now());
+        log.info("===========================");
+        
         // In production, use email service to send report
-        // For now, use ReportGeneratorService
-        // Note: ReportGeneratorService expects ScheduledReport, so we'll need to adapt
-        log.info("Sending report email to recipients: {}", report.getRecipients());
+        // For now, log that email would be sent
+        log.info("Email would be sent to recipients: {}", report.getRecipients());
+        log.info("Email subject: Workflow Report - {}", report.getName());
+        log.info("Email body: Please find attached the workflow report.");
+        
+        // Note: Full email delivery implementation deferred (currently log only)
         // Email sending will be handled by the scheduled job or can be called separately
     }
 }

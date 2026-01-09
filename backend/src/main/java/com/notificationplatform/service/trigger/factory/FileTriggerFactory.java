@@ -7,11 +7,6 @@ import com.notificationplatform.entity.enums.TriggerType;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-
 /**
  * Factory for creating File triggers.
  */
@@ -19,15 +14,10 @@ import java.util.UUID;
 @Slf4j
 public class FileTriggerFactory implements TriggerFactory {
 
-    // TODO: FILE_TRIGGER not yet supported in TriggerType enum
-    // @Override
-    // public TriggerType getSupportedType() {
-    //     return TriggerType.FILE_TRIGGER;
-    // }
-
+    // File triggers use EVENT type with file-specific configuration
     @Override
     public TriggerType getSupportedType() {
-        throw new UnsupportedOperationException("File trigger not yet supported");
+        return TriggerType.EVENT;
     }
 
     @Override

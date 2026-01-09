@@ -22,7 +22,7 @@ import java.util.Map;
  * See: @import(features/triggers.md#1-api-call-trigger)
  */
 @Slf4j
-@Service
+@Service("apiTriggerRequestHandler")
 @RequiredArgsConstructor
 public class ApiTriggerHandler {
 

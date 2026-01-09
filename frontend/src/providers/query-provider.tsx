@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import { handleApiError, getUserFriendlyErrorMessage, logError, isRetryableError, type ApiException } from '@/utils/error-handler'
+import { handleApiError, logError } from '@/utils/error-handler'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,39 +23,9 @@ const queryClient = new QueryClient({
       refetchOnMount: 'always', // Always refetch on mount for fresh data
       refetchOnReconnect: true,
       refetchInterval: false, // Disable automatic refetching
-      onError: (error) => {
-        // Global error handling for queries
-        const apiError = handleApiError(error)
-        logError(apiError, 'React Query Query Error')
-        
-        // Only log to console, don't show toast here
-        // Individual hooks should handle toast notifications
-        if (import.meta.env.DEV) {
-          console.error('[Query Error]', {
-            code: apiError.code,
-            message: apiError.message,
-            statusCode: apiError.statusCode,
-          })
-        }
-      },
     },
     mutations: {
       retry: false,
-      onError: (error) => {
-        // Global error handling for mutations
-        const apiError = handleApiError(error)
-        logError(apiError, 'React Query Mutation Error')
-        
-        // Only log to console, don't show toast here
-        // Individual hooks should handle toast notifications
-        if (import.meta.env.DEV) {
-          console.error('[Mutation Error]', {
-            code: apiError.code,
-            message: apiError.message,
-            statusCode: apiError.statusCode,
-          })
-        }
-      },
     },
   },
 })

@@ -27,14 +27,24 @@ public class TriggerHandlerRegistry {
     @PostConstruct
     public void init() {
         for (TriggerHandler handler : handlers) {
-            TriggerType type = handler.getSupportedType();
-            if (handlerMap.containsKey(type)) {
-                log.warn("Multiple handlers found for trigger type: {}. Using: {}", 
-                        type, handler.getClass().getSimpleName());
+            try {
+                TriggerType type = handler.getSupportedType();
+                if (type == null) {
+                    log.warn("Handler {} returned null trigger type, skipping", handler.getClass().getSimpleName());
+                    continue;
+                }
+                if (handlerMap.containsKey(type)) {
+                    log.warn("Multiple handlers found for trigger type: {}. Using: {}", 
+                            type, handler.getClass().getSimpleName());
+                }
+                handlerMap.put(type, handler);
+                log.debug("Registered trigger handler: {} for type: {}", 
+                        handler.getClass().getSimpleName(), type);
+            } catch (UnsupportedOperationException e) {
+                log.warn("Skipping handler {}: {}", handler.getClass().getSimpleName(), e.getMessage());
+            } catch (Exception e) {
+                log.error("Error initializing handler {}: {}", handler.getClass().getSimpleName(), e.getMessage(), e);
             }
-            handlerMap.put(type, handler);
-            log.debug("Registered trigger handler: {} for type: {}", 
-                    handler.getClass().getSimpleName(), type);
         }
         log.info("Initialized TriggerHandlerRegistry with {} handlers", handlerMap.size());
     }

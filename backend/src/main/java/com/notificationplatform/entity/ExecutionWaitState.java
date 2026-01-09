@@ -42,6 +42,27 @@ public class ExecutionWaitState {
     @Size(max = 50)
     private String waitType; // 'api_response', 'kafka_event', 'both'
 
+    @Column(name = "aggregation_strategy", nullable = false, length = 50)
+    @NotBlank
+    @Size(max = 50)
+    private String aggregationStrategy = "all"; // 'all', 'any', 'required_only', 'custom'
+
+    @Column(name = "required_events", columnDefinition = "JSONB")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private List<String> requiredEvents; // Array of required event types
+
+    @Column(name = "enabled_events", columnDefinition = "JSONB")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private List<String> enabledEvents; // Array of enabled event types
+
+    @Column(name = "api_call_enabled", nullable = false)
+    @NotNull
+    private Boolean apiCallEnabled = false;
+
+    @Column(name = "kafka_event_enabled", nullable = false)
+    @NotNull
+    private Boolean kafkaEventEnabled = false;
+
     @Column(name = "api_response_data", columnDefinition = "JSONB")
     @JdbcTypeCode(SqlTypes.JSON)
     private Map<String, Object> apiResponseData;
@@ -139,6 +160,46 @@ public class ExecutionWaitState {
 
     public void setWaitType(String waitType) {
         this.waitType = waitType;
+    }
+
+    public String getAggregationStrategy() {
+        return aggregationStrategy;
+    }
+
+    public void setAggregationStrategy(String aggregationStrategy) {
+        this.aggregationStrategy = aggregationStrategy;
+    }
+
+    public List<String> getRequiredEvents() {
+        return requiredEvents;
+    }
+
+    public void setRequiredEvents(List<String> requiredEvents) {
+        this.requiredEvents = requiredEvents;
+    }
+
+    public List<String> getEnabledEvents() {
+        return enabledEvents;
+    }
+
+    public void setEnabledEvents(List<String> enabledEvents) {
+        this.enabledEvents = enabledEvents;
+    }
+
+    public Boolean getApiCallEnabled() {
+        return apiCallEnabled;
+    }
+
+    public void setApiCallEnabled(Boolean apiCallEnabled) {
+        this.apiCallEnabled = apiCallEnabled;
+    }
+
+    public Boolean getKafkaEventEnabled() {
+        return kafkaEventEnabled;
+    }
+
+    public void setKafkaEventEnabled(Boolean kafkaEventEnabled) {
+        this.kafkaEventEnabled = kafkaEventEnabled;
     }
 
     public Map<String, Object> getApiResponseData() {

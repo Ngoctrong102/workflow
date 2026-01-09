@@ -14,7 +14,6 @@ import com.notificationplatform.dto.response.TriggerResponse;
 import com.notificationplatform.entity.Execution;
 import com.notificationplatform.entity.Trigger;
 import com.notificationplatform.entity.Workflow;
-import com.notificationplatform.entity.enums.ExecutionStatus;
 import com.notificationplatform.entity.enums.TriggerStatus;
 import com.notificationplatform.entity.enums.TriggerType;
 import com.notificationplatform.entity.enums.WorkflowStatus;

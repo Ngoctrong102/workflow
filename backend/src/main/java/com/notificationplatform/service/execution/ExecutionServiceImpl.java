@@ -201,9 +201,12 @@ public class ExecutionServiceImpl implements ExecutionService {
 
         // Filter by status if provided
         if (status != null && !status.isEmpty()) {
-            executions = executions.stream()
-                    .filter(e -> status.equals(e.getStatus()))
-                    .collect(Collectors.toList());
+            ExecutionStatus statusEnum = ExecutionStatus.fromValue(status);
+            if (statusEnum != null) {
+                executions = executions.stream()
+                        .filter(e -> statusEnum.equals(e.getStatus()))
+                        .collect(Collectors.toList());
+            }
         }
 
         // Filter by search if provided

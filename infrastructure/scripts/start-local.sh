@@ -44,7 +44,7 @@ check_port() {
 
 # Check for port conflicts
 echo -e "${YELLOW}Checking for port conflicts...${NC}"
-PORTS=(5432 9092 5672 15672 8080 5173)
+PORTS=(5432 9092 9093 5672 15672 6379 8080 5173)
 CONFLICTS=()
 
 for port in "${PORTS[@]}"; do
@@ -52,13 +52,13 @@ for port in "${PORTS[@]}"; do
         # Check if it's our container
         case $port in
             5432) container="notification-platform-db" ;;
-            9092) container="notification-platform-kafka" ;;
-            5672) container="notification-platform-rabbitmq" ;;
-            15672) container="notification-platform-rabbitmq" ;;
+            9092|9093) container="notification-platform-kafka" ;;
+            5672|15672) container="notification-platform-rabbitmq" ;;
+            6379) container="notification-platform-redis" ;;
             *) container="" ;;
         esac
         
-        if [ -z "$container" ] || ! docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+        if [ -z "$container" ] || ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${container}$"; then
             CONFLICTS+=($port)
         fi
     fi
@@ -70,7 +70,7 @@ if [ ${#CONFLICTS[@]} -gt 0 ]; then
 fi
 
 # Step 1: Start infrastructure services
-echo -e "\n${BLUE}[1/4] Starting infrastructure services (PostgreSQL, Kafka, RabbitMQ)...${NC}"
+echo -e "\n${BLUE}[1/4] Starting infrastructure services (PostgreSQL, Kafka, RabbitMQ, Redis)...${NC}"
 cd "$PROJECT_ROOT/backend"
 
 # Use docker compose (v2) or docker-compose (v1)
@@ -93,43 +93,95 @@ $COMPOSE_CMD up -d
 # Wait for services to be healthy
 echo -e "${YELLOW}Waiting for services to be ready...${NC}"
 
-# Wait for PostgreSQL
-echo -n "Waiting for PostgreSQL..."
-for i in {1..30}; do
-    if docker exec notification-platform-db pg_isready -U postgres > /dev/null 2>&1; then
-        echo -e " ${GREEN}✓${NC}"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        echo -e " ${RED}✗${NC}"
-        echo -e "${RED}PostgreSQL failed to start${NC}"
-        exit 1
-    fi
-    echo -n "."
-    sleep 1
-done
+# Function to wait for service with timeout
+wait_for_service() {
+    local service_name=$1
+    local check_command=$2
+    local max_attempts=$3
+    local sleep_interval=${4:-1}
+    local container_name=$5
+    
+    echo -n "Waiting for $service_name..."
+    for i in $(seq 1 $max_attempts); do
+        # Check if container exists and is running
+        if [ -n "$container_name" ]; then
+            if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${container_name}$"; then
+                if [ $i -eq $max_attempts ]; then
+                    echo -e " ${RED}✗${NC}"
+                    echo -e "${RED}${service_name} container is not running${NC}"
+                    return 1
+                fi
+                echo -n "."
+                sleep $sleep_interval
+                continue
+            fi
+        fi
+        
+        # Run health check
+        if eval "$check_command" > /dev/null 2>&1; then
+            echo -e " ${GREEN}✓${NC}"
+            return 0
+        fi
+        
+        if [ $i -eq $max_attempts ]; then
+            echo -e " ${RED}✗${NC}"
+            echo -e "${RED}${service_name} failed to start${NC}"
+            return 1
+        fi
+        echo -n "."
+        sleep $sleep_interval
+    done
+    return 1
+}
 
-# Wait for Kafka
+# Wait for PostgreSQL
+if ! wait_for_service "PostgreSQL" "docker exec notification-platform-db pg_isready -U postgres" 30 1 "notification-platform-db"; then
+    echo -e "${RED}PostgreSQL health check failed. Check logs:${NC}"
+    $COMPOSE_CMD logs postgres | tail -20
+    exit 1
+fi
+
+# Wait for Redis (can start in parallel with PostgreSQL)
+if ! wait_for_service "Redis" "docker exec notification-platform-redis redis-cli ping" 30 1 "notification-platform-redis"; then
+    echo -e "${RED}Redis health check failed. Check logs:${NC}"
+    $COMPOSE_CMD logs redis | tail -20
+    exit 1
+fi
+
+# Wait for RabbitMQ
+if ! wait_for_service "RabbitMQ" "docker exec notification-platform-rabbitmq rabbitmq-diagnostics ping" 30 1 "notification-platform-rabbitmq"; then
+    echo -e "${RED}RabbitMQ health check failed. Check logs:${NC}"
+    $COMPOSE_CMD logs rabbitmq | tail -20
+    exit 1
+fi
+
+# Wait for Kafka (takes longer, check both listeners)
 echo -n "Waiting for Kafka..."
+KAFKA_READY=false
 for i in {1..60}; do
     # Check if container is running
-    if ! docker ps | grep -q notification-platform-kafka; then
+    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^notification-platform-kafka$"; then
         if [ $i -eq 60 ]; then
             echo -e " ${RED}✗${NC}"
             echo -e "${RED}Kafka container is not running${NC}"
-            docker compose logs kafka | tail -20
+            $COMPOSE_CMD logs kafka | tail -30
             exit 1
         fi
         echo -n "."
-        sleep 1
+        sleep 2
         continue
     fi
     
-    # Check if Kafka is ready
+    # Check if Kafka is ready (check internal listener first, then external)
     if docker exec notification-platform-kafka kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1; then
-        echo -e " ${GREEN}✓${NC}"
-        break
+        # Also verify external listener is accessible from host
+        if timeout 2 bash -c "cat < /dev/null > /dev/tcp/localhost/9093" 2>/dev/null; then
+            echo -e " ${GREEN}✓${NC}"
+            KAFKA_READY=true
+            break
+        fi
     fi
+    
     if [ $i -eq 60 ]; then
         echo -e " ${RED}✗${NC}"
         echo -e "${RED}Kafka failed to start. Checking logs...${NC}"
@@ -140,21 +192,9 @@ for i in {1..60}; do
     sleep 2
 done
 
-# Wait for RabbitMQ
-echo -n "Waiting for RabbitMQ..."
-for i in {1..30}; do
-    if docker exec notification-platform-rabbitmq rabbitmq-diagnostics ping > /dev/null 2>&1; then
-        echo -e " ${GREEN}✓${NC}"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        echo -e " ${RED}✗${NC}"
-        echo -e "${RED}RabbitMQ failed to start${NC}"
-        exit 1
-    fi
-    echo -n "."
-    sleep 1
-done
+if [ "$KAFKA_READY" = false ]; then
+    exit 1
+fi
 
 # Step 2: Build backend
 echo -e "\n${BLUE}[2/4] Building backend application...${NC}"
@@ -246,10 +286,29 @@ else
 
     # Load environment variables
     if [ -f "$PROJECT_ROOT/.env" ]; then
-        set -a
-        source "$PROJECT_ROOT/.env"
-        set +a
+        # Source .env file safely (handle comments and empty lines)
+        while IFS= read -r line || [ -n "$line" ]; do
+            # Skip comments and empty lines
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
+            [[ -z "${line// }" ]] && continue
+            # Export variable (handle key=value format)
+            if [[ "$line" =~ ^[[:space:]]*([^=]+)=(.*)$ ]]; then
+                export "${BASH_REMATCH[1]}"="${BASH_REMATCH[2]}"
+            fi
+        done < "$PROJECT_ROOT/.env"
     fi
+    
+    # Set default environment variables if not already set
+    export DB_USERNAME=${DB_USERNAME:-postgres}
+    export DB_PASSWORD=${DB_PASSWORD:-postgres}
+    export KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-localhost:9093}
+    export RABBITMQ_HOST=${RABBITMQ_HOST:-localhost}
+    export RABBITMQ_PORT=${RABBITMQ_PORT:-5672}
+    export RABBITMQ_USERNAME=${RABBITMQ_USERNAME:-guest}
+    export RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-guest}
+    export REDIS_HOST=${REDIS_HOST:-localhost}
+    export REDIS_PORT=${REDIS_PORT:-6379}
+    export SERVER_PORT=${SERVER_PORT:-8080}
 
     # Start backend in background
     echo -e "${GREEN}Starting backend on port 8080...${NC}"
@@ -330,7 +389,9 @@ echo -e "${GREEN}All services started successfully!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo -e "\n${BLUE}Services:${NC}"
 echo -e "  ${GREEN}✓${NC} PostgreSQL:     localhost:5432"
-echo -e "  ${GREEN}✓${NC} Kafka:          localhost:9092"
+echo -e "  ${GREEN}✓${NC} Redis:          localhost:6379"
+echo -e "  ${GREEN}✓${NC} Kafka:          localhost:9093 (Docker: kafka:9092)"
+echo -e "  ${GREEN}✓${NC} Kafka UI:       http://localhost:9999"
 echo -e "  ${GREEN}✓${NC} RabbitMQ:       localhost:5672 (Management: http://localhost:15672)"
 if [ "$BACKEND_SKIP" = false ]; then
     echo -e "  ${GREEN}✓${NC} Backend API:    http://localhost:8080/api/v1"

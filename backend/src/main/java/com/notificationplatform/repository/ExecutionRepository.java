@@ -1,6 +1,7 @@
 package com.notificationplatform.repository;
 
 import com.notificationplatform.entity.Execution;
+import com.notificationplatform.entity.enums.ExecutionStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -19,12 +20,12 @@ public interface ExecutionRepository extends JpaRepository<Execution, String> {
     List<Execution> findByTriggerId(String triggerId);
 
     // Find by status
-    List<Execution> findByStatus(String status);
+    List<Execution> findByStatus(ExecutionStatus status);
 
     // Find by workflow ID and status
     @Query("SELECT e FROM Execution e WHERE e.workflow.id = :workflowId AND e.status = :status")
     List<Execution> findByWorkflowIdAndStatus(@Param("workflowId") String workflowId, 
-                                              @Param("status") String status);
+                                              @Param("status") ExecutionStatus status);
 
     // Find by workflow ID ordered by started date
     @Query("SELECT e FROM Execution e WHERE e.workflow.id = :workflowId ORDER BY e.startedAt DESC")
@@ -47,15 +48,16 @@ public interface ExecutionRepository extends JpaRepository<Execution, String> {
     // Count by workflow ID and status
     @Query("SELECT COUNT(e) FROM Execution e WHERE e.workflow.id = :workflowId AND e.status = :status")
     long countByWorkflowIdAndStatus(@Param("workflowId") String workflowId, 
-                                    @Param("status") String status);
+                                    @Param("status") ExecutionStatus status);
 
     // Find running executions
-    @Query("SELECT e FROM Execution e WHERE e.status = 'running'")
-    List<Execution> findRunningExecutions();
+    @Query("SELECT e FROM Execution e WHERE e.status = :status")
+    List<Execution> findRunningExecutions(@Param("status") ExecutionStatus status);
 
     // Find failed executions by workflow ID
-    @Query("SELECT e FROM Execution e WHERE e.workflow.id = :workflowId AND e.status = 'failed' ORDER BY e.startedAt DESC")
-    List<Execution> findFailedByWorkflowId(@Param("workflowId") String workflowId);
+    @Query("SELECT e FROM Execution e WHERE e.workflow.id = :workflowId AND e.status = :status ORDER BY e.startedAt DESC")
+    List<Execution> findFailedByWorkflowId(@Param("workflowId") String workflowId, 
+                                           @Param("status") ExecutionStatus status);
 
     // Find by workflow ID and date range (for analytics)
     @Query("SELECT e FROM Execution e WHERE e.workflow.id = :workflowId AND " +
@@ -74,7 +76,7 @@ public interface ExecutionRepository extends JpaRepository<Execution, String> {
 
     // Dashboard queries
     // Count executions by workflow and status
-    @Query(value = "SELECT COUNT(*) FROM executions e WHERE e.workflow_id = :workflowId AND e.status = :status AND " +
+    @Query(value = "SELECT COUNT(*) FROM executions e WHERE e.workflow_id = :workflowId AND e.status = CAST(:status AS VARCHAR) AND " +
            "e.started_at >= COALESCE(CAST(:startDate AS timestamp), CAST('1970-01-01' AS timestamp)) AND " +
            "e.started_at <= COALESCE(CAST(:endDate AS timestamp), CAST('9999-12-31 23:59:59' AS timestamp))", nativeQuery = true)
     long countByWorkflowIdAndStatusAndDateRange(@Param("workflowId") String workflowId,

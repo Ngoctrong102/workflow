@@ -6,7 +6,6 @@ import com.notificationplatform.engine.ExecutionStateService;
 import com.notificationplatform.engine.WorkflowExecutor;
 import com.notificationplatform.entity.Execution;
 import com.notificationplatform.entity.ExecutionWaitState;
-import com.notificationplatform.entity.Workflow;
 import com.notificationplatform.entity.enums.ExecutionStatus;
 import com.notificationplatform.repository.ExecutionWaitStateRepository;
 import com.notificationplatform.repository.ExecutionRepository;

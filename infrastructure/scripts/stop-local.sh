@@ -20,47 +20,73 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}Stopping Notification Platform${NC}"
 echo -e "${BLUE}========================================${NC}"
 
+# Function to stop process gracefully
+stop_process() {
+    local name=$1
+    local pid_file=$2
+    local port=$3
+    
+    if [ -f "$pid_file" ]; then
+        local pid=$(cat "$pid_file" 2>/dev/null)
+        if [ -n "$pid" ] && ps -p $pid > /dev/null 2>&1; then
+            echo -n "Stopping $name (PID: $pid)..."
+            # Try graceful shutdown first
+            kill $pid 2>/dev/null || true
+            # Wait up to 5 seconds for graceful shutdown
+            for i in {1..5}; do
+                if ! ps -p $pid > /dev/null 2>&1; then
+                    echo -e " ${GREEN}✓${NC}"
+                    rm -f "$pid_file"
+                    return 0
+                fi
+                sleep 1
+            done
+            # Force kill if still running
+            if ps -p $pid > /dev/null 2>&1; then
+                kill -9 $pid 2>/dev/null || true
+                sleep 1
+                echo -e " ${GREEN}✓ (force killed)${NC}"
+            fi
+            rm -f "$pid_file"
+            return 0
+        else
+            echo -e "${YELLOW}$name process not found${NC}"
+            rm -f "$pid_file"
+        fi
+    fi
+    
+    # Try to kill by port if PID file doesn't exist or process not found
+    if [ -n "$port" ] && lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+        local pids=$(lsof -t -i:$port 2>/dev/null)
+        if [ -n "$pids" ]; then
+            echo -n "Stopping $name (port $port)..."
+            for pid in $pids; do
+                kill $pid 2>/dev/null || true
+            done
+            sleep 2
+            # Force kill if still running
+            pids=$(lsof -t -i:$port 2>/dev/null)
+            if [ -n "$pids" ]; then
+                for pid in $pids; do
+                    kill -9 $pid 2>/dev/null || true
+                done
+            fi
+            echo -e " ${GREEN}✓${NC}"
+            return 0
+        fi
+    fi
+    
+    echo -e "${YELLOW}$name not running${NC}"
+    return 0
+}
+
 # Stop frontend
 echo -e "\n${BLUE}[1/3] Stopping frontend...${NC}"
-if [ -f "$PROJECT_ROOT/frontend/.frontend.pid" ]; then
-    FRONTEND_PID=$(cat "$PROJECT_ROOT/frontend/.frontend.pid")
-    if ps -p $FRONTEND_PID > /dev/null 2>&1; then
-        kill $FRONTEND_PID 2>/dev/null || true
-        echo -e "${GREEN}Frontend stopped${NC}"
-    else
-        echo -e "${YELLOW}Frontend process not found${NC}"
-    fi
-    rm -f "$PROJECT_ROOT/frontend/.frontend.pid"
-else
-    # Try to kill by port
-    if lsof -Pi :5173 -sTCP:LISTEN -t >/dev/null 2>&1; then
-        kill $(lsof -t -i:5173) 2>/dev/null || true
-        echo -e "${GREEN}Frontend stopped (by port)${NC}"
-    else
-        echo -e "${YELLOW}Frontend not running${NC}"
-    fi
-fi
+stop_process "Frontend" "$PROJECT_ROOT/frontend/.frontend.pid" "5173"
 
 # Stop backend
 echo -e "\n${BLUE}[2/3] Stopping backend...${NC}"
-if [ -f "$PROJECT_ROOT/backend/.backend.pid" ]; then
-    BACKEND_PID=$(cat "$PROJECT_ROOT/backend/.backend.pid")
-    if ps -p $BACKEND_PID > /dev/null 2>&1; then
-        kill $BACKEND_PID 2>/dev/null || true
-        echo -e "${GREEN}Backend stopped${NC}"
-    else
-        echo -e "${YELLOW}Backend process not found${NC}"
-    fi
-    rm -f "$PROJECT_ROOT/backend/.backend.pid"
-else
-    # Try to kill by port
-    if lsof -Pi :8080 -sTCP:LISTEN -t >/dev/null 2>&1; then
-        kill $(lsof -t -i:8080) 2>/dev/null || true
-        echo -e "${GREEN}Backend stopped (by port)${NC}"
-    else
-        echo -e "${YELLOW}Backend not running${NC}"
-    fi
-fi
+stop_process "Backend" "$PROJECT_ROOT/backend/.backend.pid" "8080"
 
 # Stop infrastructure services
 echo -e "\n${BLUE}[3/3] Stopping infrastructure services...${NC}"
@@ -75,9 +101,11 @@ else
     COMPOSE_CMD="docker compose"  # Default to v2
 fi
 
+# Check if any containers are running
 if $COMPOSE_CMD ps 2>/dev/null | grep -q "Up"; then
-    $COMPOSE_CMD down
-    echo -e "${GREEN}Infrastructure services stopped${NC}"
+    echo -n "Stopping infrastructure services..."
+    $COMPOSE_CMD down > /dev/null 2>&1
+    echo -e " ${GREEN}✓${NC}"
 else
     echo -e "${YELLOW}Infrastructure services not running${NC}"
 fi

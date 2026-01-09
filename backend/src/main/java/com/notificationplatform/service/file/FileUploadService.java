@@ -86,7 +86,7 @@ public class FileUploadService {
                         Map<String, Object> mappedData = mapData(row, dataMapping);
 
                         // Execute workflow
-                        Execution execution = workflowExecutor.execute(workflow, mappedData, trigger.getId());
+                        workflowExecutor.execute(workflow, mappedData, trigger.getId());
                         processedCount++;
                     } catch (Exception e) {
                         errorCount++;
@@ -105,7 +105,7 @@ public class FileUploadService {
                         aggregatedData.putAll(dataMapping);
                     }
 
-                    Execution execution = workflowExecutor.execute(workflow, aggregatedData, trigger.getId());
+                    workflowExecutor.execute(workflow, aggregatedData, trigger.getId());
                     processedCount = rows.size();
                 } catch (Exception e) {
                     errorCount = rows.size();

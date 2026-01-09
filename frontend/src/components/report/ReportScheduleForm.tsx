@@ -11,8 +11,6 @@ import { Loader2 } from "lucide-react"
 import type {
   ReportSchedule,
   CreateReportScheduleRequest,
-  ReportFrequency,
-  ReportFormat,
 } from "@/types/report"
 
 interface ReportScheduleFormProps {

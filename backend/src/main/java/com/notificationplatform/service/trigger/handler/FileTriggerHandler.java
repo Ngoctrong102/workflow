@@ -13,11 +13,10 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class FileTriggerHandler implements TriggerHandler {
 
-    // TODO: FILE_TRIGGER not yet supported in TriggerType enum
+    // File triggers use EVENT type with file-specific configuration
     @Override
     public TriggerType getSupportedType() {
-        throw new UnsupportedOperationException("File trigger not yet supported");
-        // return TriggerType.FILE_TRIGGER;
+        return TriggerType.EVENT;
     }
 
     @Override

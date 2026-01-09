@@ -1,4 +1,3 @@
-import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -7,11 +6,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useForm, Controller, useFieldArray } from "react-hook-form"
-import { Plus, Trash2, AlertCircle } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import type {
   ReportSchedule,
-  ScheduleFrequency,
-  ReportFormat,
   CreateReportScheduleRequest,
 } from "@/types/report-schedule"
 
@@ -28,7 +25,7 @@ export function ReportScheduleEditor({ schedule, onSave, onCancel }: ReportSched
       description: schedule?.description || "",
       frequency: schedule?.frequency || "daily",
       format: schedule?.format || "csv",
-      recipients: schedule?.recipients || [],
+      recipients: schedule?.recipients || [""],
       report_type: schedule?.report_type || "analytics",
       enabled: schedule?.enabled ?? true,
     },
@@ -36,7 +33,7 @@ export function ReportScheduleEditor({ schedule, onSave, onCancel }: ReportSched
 
   const { fields, append, remove } = useFieldArray({
     control,
-    name: "recipients",
+    name: "recipients" as const,
   })
 
   const addRecipient = () => {

@@ -16,8 +16,8 @@ interface PeriodTypeSelectorProps {
 export function PeriodTypeSelector({
   control,
   periodType,
-  periodStartDate,
-  periodEndDate,
+  periodStartDate: _periodStartDate,
+  periodEndDate: _periodEndDate,
   error,
 }: PeriodTypeSelectorProps) {
   return (

@@ -2,10 +2,14 @@ package com.notificationplatform.controller;
 
 import com.notificationplatform.dto.request.CancelExecutionRequest;
 import com.notificationplatform.dto.request.RetryExecutionRequest;
+import com.notificationplatform.dto.request.VisualizeStepRequest;
 import com.notificationplatform.dto.response.ExecutionDetailResponse;
 import com.notificationplatform.dto.response.ExecutionStatusResponse;
+import com.notificationplatform.dto.response.ExecutionVisualizationResponse;
 import com.notificationplatform.dto.response.PagedResponse;
+import com.notificationplatform.dto.response.VisualizeStepResponse;
 import com.notificationplatform.service.execution.ExecutionService;
+import com.notificationplatform.service.visualization.ExecutionVisualizationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -28,9 +32,12 @@ import java.util.Map;
 public class ExecutionController {
 
     private final ExecutionService executionService;
+    private final ExecutionVisualizationService visualizationService;
 
-    public ExecutionController(ExecutionService executionService) {
+    public ExecutionController(ExecutionService executionService,
+                               ExecutionVisualizationService visualizationService) {
         this.executionService = executionService;
+        this.visualizationService = visualizationService;
     }
 
     @GetMapping("/{id}")
@@ -113,40 +120,72 @@ public class ExecutionController {
 
     // Visualization endpoints
     @GetMapping("/{id}/visualize")
-    public ResponseEntity<com.notificationplatform.dto.response.ExecutionVisualizationResponse> getExecutionVisualization(
-            @PathVariable String id) {
-        com.notificationplatform.dto.response.ExecutionVisualizationResponse response = 
-            executionService.getExecutionVisualization(id);
+    @Operation(summary = "Get execution for visualization", 
+               description = "Load execution data for step-by-step visualization and debugging")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Execution visualization data retrieved successfully",
+                    content = @Content(schema = @Schema(implementation = ExecutionVisualizationResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Execution not found")
+    })
+    public ResponseEntity<ExecutionVisualizationResponse> getExecutionVisualization(
+            @Parameter(description = "Execution ID", required = true) @PathVariable String id) {
+        ExecutionVisualizationResponse response = visualizationService.loadExecutionForVisualization(id);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{id}/visualize/step")
-    public ResponseEntity<com.notificationplatform.dto.response.VisualizeStepResponse> executeVisualizationStep(
-            @PathVariable String id,
-            @Valid @RequestBody com.notificationplatform.dto.request.VisualizeStepRequest request) {
-        com.notificationplatform.dto.response.VisualizeStepResponse response = 
-            executionService.executeVisualizationStep(id, request);
+    @Operation(summary = "Execute next step", 
+               description = "Execute next step in visualization (forward or backward)")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Step executed successfully",
+                    content = @Content(schema = @Schema(implementation = VisualizeStepResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Execution not found")
+    })
+    public ResponseEntity<VisualizeStepResponse> executeVisualizationStep(
+            @Parameter(description = "Execution ID", required = true) @PathVariable String id,
+            @Valid @RequestBody VisualizeStepRequest request) {
+        VisualizeStepResponse response = visualizationService.executeNextStep(id, request);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{id}/visualize/step/{stepNumber}")
-    public ResponseEntity<com.notificationplatform.dto.response.ExecutionVisualizationResponse> getExecutionStateAtStep(
-            @PathVariable String id,
-            @PathVariable Integer stepNumber) {
-        com.notificationplatform.dto.response.ExecutionVisualizationResponse response = 
-            executionService.getExecutionStateAtStep(id, stepNumber);
+    @Operation(summary = "Get execution state at step", 
+               description = "Get execution state at a specific step number")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Execution state retrieved successfully",
+                    content = @Content(schema = @Schema(implementation = ExecutionVisualizationResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Execution not found")
+    })
+    public ResponseEntity<ExecutionVisualizationResponse> getExecutionStateAtStep(
+            @Parameter(description = "Execution ID", required = true) @PathVariable String id,
+            @Parameter(description = "Step number", required = true) @PathVariable Integer stepNumber) {
+        ExecutionVisualizationResponse response = visualizationService.getExecutionStateAtStep(id, stepNumber);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{id}/visualize/reset")
-    public ResponseEntity<Void> resetVisualization(@PathVariable String id) {
-        executionService.resetVisualization(id);
+    @Operation(summary = "Reset visualization", 
+               description = "Reset visualization to initial state (step 0)")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "204", description = "Visualization reset successfully"),
+            @ApiResponse(responseCode = "404", description = "Execution not found")
+    })
+    public ResponseEntity<Void> resetVisualization(
+            @Parameter(description = "Execution ID", required = true) @PathVariable String id) {
+        visualizationService.resetVisualization(id);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}/visualize/context")
-    public ResponseEntity<Map<String, Object>> getVisualizationContext(@PathVariable String id) {
-        Map<String, Object> context = executionService.getVisualizationContext(id);
+    @Operation(summary = "Get current context", 
+               description = "Get current execution context at the current visualization step")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Context retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Execution not found")
+    })
+    public ResponseEntity<Map<String, Object>> getVisualizationContext(
+            @Parameter(description = "Execution ID", required = true) @PathVariable String id) {
+        Map<String, Object> context = visualizationService.getCurrentContext(id);
         return ResponseEntity.ok(context);
     }
 }

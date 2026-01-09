@@ -1,6 +1,5 @@
 package com.notificationplatform.dto.mapper;
 
-import com.notificationplatform.constants.ApplicationConstants;
 import com.notificationplatform.dto.request.CreateObjectTypeRequest;
 import com.notificationplatform.dto.request.FieldDefinitionDTO;
 import com.notificationplatform.dto.request.UpdateObjectTypeRequest;

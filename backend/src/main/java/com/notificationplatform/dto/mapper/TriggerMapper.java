@@ -32,7 +32,7 @@ public interface TriggerMapper {
     default Trigger toEntity(CreateApiTriggerRequest request) {
         Trigger trigger = new Trigger();
         trigger.setId(generateId());
-        trigger.setType(TriggerType.API);
+        trigger.setTriggerType(TriggerType.API_CALL);
         trigger.setStatus(TriggerStatus.ACTIVE);
         
         // Build config with path and method
@@ -56,7 +56,7 @@ public interface TriggerMapper {
     default Trigger toEntity(CreateScheduleTriggerRequest request) {
         Trigger trigger = new Trigger();
         trigger.setId(generateId());
-        trigger.setType(TriggerType.SCHEDULE);
+        trigger.setTriggerType(TriggerType.SCHEDULER);
         trigger.setStatus(TriggerStatus.ACTIVE);
         
         // Build config
@@ -85,7 +85,7 @@ public interface TriggerMapper {
     default Trigger toEntity(CreateFileTriggerRequest request) {
         Trigger trigger = new Trigger();
         trigger.setId(generateId());
-        trigger.setType(TriggerType.FILE);
+        trigger.setTriggerType(TriggerType.EVENT); // File trigger uses EVENT type
         trigger.setStatus(TriggerStatus.ACTIVE);
         
         // Build config
@@ -110,7 +110,7 @@ public interface TriggerMapper {
     default Trigger toEntity(CreateEventTriggerRequest request) {
         Trigger trigger = new Trigger();
         trigger.setId(generateId());
-        trigger.setType(TriggerType.EVENT);
+        trigger.setTriggerType(TriggerType.EVENT);
         trigger.setStatus(TriggerStatus.ACTIVE);
         
         // Build config
@@ -166,7 +166,7 @@ public interface TriggerMapper {
      * Map Trigger entity to TriggerResponse DTO.
      */
     @Mapping(target = "workflowId", expression = "java(trigger.getWorkflow() != null ? trigger.getWorkflow().getId() : null)")
-    @Mapping(target = "type", expression = "java(convertTypeToString(trigger.getType()))")
+    @Mapping(target = "type", expression = "java(convertTypeToString(trigger.getTriggerType()))")
     @Mapping(target = "status", expression = "java(convertStatusToString(trigger.getStatus()))")
     @Mapping(target = "path", expression = "java(extractPathFromConfig(trigger.getConfig()))")
     @Mapping(target = "method", expression = "java(extractMethodFromConfig(trigger.getConfig()))")
@@ -223,8 +223,12 @@ public interface TriggerMapper {
      * Build upload endpoint for file triggers.
      */
     default String buildUploadEndpoint(Trigger trigger) {
-        if (trigger.getType() == TriggerType.FILE && trigger.getId() != null) {
-            return "/api/v1/triggers/file/" + trigger.getId() + "/upload";
+        // File triggers are handled via EVENT type with file-specific config
+        if (trigger.getTriggerType() == TriggerType.EVENT && trigger.getId() != null) {
+            Map<String, Object> config = trigger.getConfig();
+            if (config != null && config.containsKey("fileFormats")) {
+                return "/api/v1/triggers/file/" + trigger.getId() + "/upload";
+            }
         }
         return null;
     }
