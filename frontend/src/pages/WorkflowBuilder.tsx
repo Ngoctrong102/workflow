@@ -28,7 +28,7 @@ import { copyNodes, pasteNodes, storeCopiedNodes, getCopiedNodes } from "@/utils
 import { createGroup } from "@/utils/node-grouping"
 import type { WorkflowDefinition, WorkflowNodeType } from "@/types/workflow"
 import type { NodeGroup } from "@/utils/node-grouping"
-import { Eye, Play, CheckCircle2, ChevronLeft, ChevronRight, X, AlertCircle, History, Clock, BarChart3, Undo2, Redo2, Copy, Clipboard, Group, Save } from "lucide-react"
+import { Eye, Play, CheckCircle2, ChevronLeft, ChevronRight, X, AlertCircle, History, Clock, BarChart3, Undo2, Redo2, Copy, Clipboard, Group, Save, Trash2, Maximize2 } from "lucide-react"
 
 type ViewMode = "build" | "preview" | "test"
 
@@ -371,6 +371,54 @@ export default function WorkflowBuilder() {
       })
     }
   }, [nodes, edges, selectedNodeId, toast])
+
+  // Delete handler
+  const handleDelete = useCallback(() => {
+    if (!selectedNodeId) {
+      toast({
+        variant: "destructive",
+        title: "No Selection",
+        description: "Please select a node to delete",
+      })
+      return
+    }
+
+    // Remove node and its connected edges
+    const updatedNodes = nodes.filter((n) => n.id !== selectedNodeId)
+    const updatedEdges = edges.filter(
+      (e) => e.source !== selectedNodeId && e.target !== selectedNodeId
+    )
+    
+    setNodes(updatedNodes)
+    setEdges(updatedEdges)
+    setSelectedNodeId(null)
+    saveSnapshot()
+    
+    toast({
+      title: "Deleted",
+      description: "Node deleted successfully",
+    })
+  }, [selectedNodeId, nodes, edges, setNodes, setEdges, setSelectedNodeId, saveSnapshot, toast])
+
+  // Fullscreen handler
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const handleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen()
+      setIsFullscreen(true)
+    } else {
+      document.exitFullscreen()
+      setIsFullscreen(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement)
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange)
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange)
+  }, [])
 
   const handlePaste = useCallback(() => {
     const copied = copiedNodes || getCopiedNodes()
@@ -838,32 +886,21 @@ export default function WorkflowBuilder() {
   return (
     <FieldReferenceProvider initialObjectTypes={objectTypesForContext}>
       <div className="h-full w-full">
-      {/* Compact Workflow Header - Floating Top Right, Responsive, Adjusts when Properties Panel is open */}
+      {/* Toolbar - Horizontal, Top Center, Following Design */}
       {showWorkflowDetails && (
         <div 
           className={cn(
-            "fixed top-16 sm:top-20 z-[60] max-w-full sm:max-w-md w-[calc(100%-1rem)] sm:w-auto transition-all duration-300 ease-in-out",
+            "fixed top-4 left-1/2 -translate-x-1/2 z-[60] transition-all duration-300 ease-in-out",
             showPropertiesPanel 
-              ? "right-[calc(18rem+0.5rem)] md:right-[calc(20rem+0.5rem)]" 
-              : "right-2 sm:right-4"
+              ? "right-[calc(18rem+0.5rem)] md:right-[calc(20rem+0.5rem)] left-auto translate-x-0" 
+              : ""
           )}
         >
-          <Card className="p-2 shadow-lg">
-            <div className="flex items-center gap-1 sm:gap-2 flex-wrap sm:flex-nowrap">
-              <div className="flex-1 min-w-0 w-full sm:w-auto">
-                <Input
-                  value={localWorkflowName}
-                  onChange={(e) => {
-                    const newName = e.target.value
-                    setLocalWorkflowName(newName)
-                    setWorkflowName(newName)
-                  }}
-                  placeholder="Workflow name"
-                  className="h-8 text-sm font-medium"
-                />
-              </div>
+          <Card className="p-2 shadow-lg bg-white/95 backdrop-blur-sm border border-secondary-200">
+            <div className="flex items-center gap-1.5">
+              {/* Status Dropdown */}
               <Select value={workflowStatus} onValueChange={(value) => setWorkflowStatus(value as "draft" | "active" | "inactive" | "paused" | "archived")}>
-                <SelectTrigger className="w-24 sm:w-28 h-8 text-xs">
+                <SelectTrigger className="h-8 px-3 text-sm font-medium text-secondary-700 border-secondary-300 hover:bg-secondary-50 cursor-pointer transition-colors">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -873,228 +910,118 @@ export default function WorkflowBuilder() {
                   <SelectItem value="paused">Paused</SelectItem>
                 </SelectContent>
               </Select>
-              {isEditMode && workflow && (
-                <div className="relative">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    onClick={() => setShowVersionHistory(!showVersionHistory)}
-                    title="View version history"
-                  >
-                    <History className="h-4 w-4" />
-                  </Button>
-                  {showVersionHistory && (
-                    <div className="absolute top-10 right-0 z-[70] bg-white border border-secondary-200 rounded-lg shadow-xl min-w-[200px] max-h-[300px] overflow-y-auto">
-                      <div className="p-2 border-b border-secondary-200">
-                        <div className="text-xs font-semibold text-secondary-700">Version History</div>
-                        <div className="text-xs text-secondary-500">Select a version to view</div>
-                      </div>
-                      <div className="p-1">
-                        {isLoadingVersions ? (
-                          <div className="text-center py-4 text-xs text-secondary-500">Loading versions...</div>
-                        ) : versions && versions.length > 0 ? (
-                          <>
-                            {versions
-                              .sort((a, b) => (b.version || 0) - (a.version || 0))
-                              .map((v) => (
-                                <button
-                                  key={v.version}
-                                  onClick={() => {
-                                    console.log('[WorkflowBuilder] Selecting version:', v.version)
-                                    setSelectedVersion(v.version || null)
-                                    setShowVersionHistory(false)
-                                  }}
-                                  className={cn(
-                                    "w-full text-left px-2 py-1.5 rounded text-xs hover:bg-secondary-50 transition-colors",
-                                    selectedVersion === v.version && "bg-primary-50 text-primary-700",
-                                    !selectedVersion && v.version === workflow.version && "bg-primary-50 text-primary-700"
-                                  )}
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <span className="font-medium">v{v.version}</span>
-                                    {(!selectedVersion && v.version === workflow.version) || selectedVersion === v.version ? (
-                                      <span className="text-xs text-primary-600">Current</span>
-                                    ) : null}
-                                  </div>
-                                  <div className="text-xs text-secondary-500 mt-0.5">
-                                    {new Date(v.updatedAt).toLocaleDateString()}
-                                  </div>
-                                </button>
-                              ))}
-                            {selectedVersion && selectedVersion !== workflow.version && (
-                              <>
-                                <button
-                                  onClick={async () => {
-                                    if (id && selectedVersion) {
-                                      try {
-                                        await rollbackWorkflow.mutateAsync({ id, version: selectedVersion })
-                                        setSelectedVersion(null)
-                                        setShowVersionHistory(false)
-                                      } catch (error) {
-                                        // Error handling is done in the mutation hook
-                                      }
-                                    }
-                                  }}
-                                  className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-secondary-50 transition-colors mt-1 border-t border-secondary-200 pt-1 text-primary-600 font-medium disabled:opacity-50"
-                                  disabled={rollbackWorkflow.isPending}
-                                >
-                                  {rollbackWorkflow.isPending ? "Rolling back..." : "Rollback to this version"}
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setSelectedVersion(null)
-                                    setShowVersionHistory(false)
-                                  }}
-                                  className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-secondary-50 transition-colors mt-1"
-                                >
-                                  <div className="flex items-center gap-1">
-                                    <Clock className="h-3 w-3" />
-                                    <span>Back to current (v{workflow.version})</span>
-                                  </div>
-                                </button>
-                              </>
-                            )}
-                          </>
-                        ) : (
-                          <div className="text-center py-4 text-xs text-secondary-500">
-                            {workflow ? (
-                              <>
-                                <div className="font-medium">Current version: v{workflow.version}</div>
-                                {versionsError ? (
-                                  <div className="mt-1 text-xs text-error-600">
-                                    Error loading versions. API endpoint may not be implemented yet.
-                                  </div>
-                                ) : (
-                                  <div className="mt-1 text-xs text-secondary-400">Version history not available</div>
-                                )}
-                              </>
-                            ) : (
-                              "No versions found"
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+              
+              {/* Divider */}
+              <div className="w-px h-6 bg-secondary-200 mx-0.5" />
+              
+              {/* Action Icons */}
               <div className="flex items-center gap-1">
-                {isEditMode && id && id !== "new" && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    onClick={() => navigate(`/workflows/${id}/dashboard`)}
-                    title="View Dashboard"
-                  >
-                    <BarChart3 className="h-4 w-4" />
-                  </Button>
-                )}
+                  {/* Preview */}
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0"
+                  className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer"
                   onClick={() => setViewMode(viewMode === "preview" ? "build" : "preview")}
                   title="Preview"
                 >
-                  <Eye className="h-4 w-4" />
+                  <Eye className="h-4 w-4 text-secondary-700" />
                 </Button>
+                
+                {/* Run/Execute */}
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0"
+                  className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer"
                   onClick={() => setShowTestDialog(true)}
-                  title="Test"
+                  title="Run/Execute"
                 >
-                  <Play className="h-4 w-4" />
+                  <Play className="h-4 w-4 text-secondary-700" />
                 </Button>
+                
+                {/* Validate */}
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0 hidden sm:flex"
+                  className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer"
                   onClick={handleValidate}
                   title="Validate"
                 >
-                  <CheckCircle2 className="h-4 w-4" />
+                  <CheckCircle2 className="h-4 w-4 text-secondary-700" />
                 </Button>
+                
+                {/* Undo */}
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0 hidden sm:flex"
+                  className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer disabled:opacity-50"
                   onClick={handleUndo}
                   disabled={!canUndo()}
                   title="Undo (Ctrl+Z)"
                 >
-                  <Undo2 className="h-4 w-4" />
+                  <Undo2 className="h-4 w-4 text-secondary-700" />
                 </Button>
+                
+                {/* Redo */}
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0 hidden sm:flex"
+                  className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer disabled:opacity-50"
                   onClick={handleRedo}
                   disabled={!canRedo()}
                   title="Redo (Ctrl+Y)"
                 >
-                  <Redo2 className="h-4 w-4" />
+                  <Redo2 className="h-4 w-4 text-secondary-700" />
                 </Button>
+                
+                {/* Copy */}
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0 hidden sm:flex"
+                  className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer disabled:opacity-50"
                   onClick={handleCopy}
                   disabled={!selectedNodeId}
                   title="Copy (Ctrl+C)"
                 >
-                  <Copy className="h-4 w-4" />
+                  <Copy className="h-4 w-4 text-secondary-700" />
                 </Button>
+                
+                {/* Delete */}
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0 hidden sm:flex"
-                  onClick={handlePaste}
-                  title="Paste (Ctrl+V)"
-                >
-                  <Clipboard className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 hidden sm:flex"
-                  onClick={handleCreateGroup}
+                  className="h-8 w-8 p-0 hover:bg-error-50 transition-colors cursor-pointer disabled:opacity-50"
+                  onClick={handleDelete}
                   disabled={!selectedNodeId}
-                  title="Group Selected Nodes"
+                  title="Delete"
                 >
-                  <Group className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4 text-error-600" />
                 </Button>
+                
+                {/* Fullscreen */}
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0 hidden sm:flex"
-                  onClick={() => setShowSaveTemplateDialog(true)}
-                  title="Save as Template"
+                  className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer"
+                  onClick={handleFullscreen}
+                  title="Fullscreen"
                 >
-                  <Save className="h-4 w-4" />
-                </Button>
-                    <Button
-                      size="sm"
-                      className="h-8 px-2 sm:px-3 text-xs sm:text-sm"
-                      onClick={handleSave}
-                      disabled={!isDirty || (selectedVersion !== null && selectedVersion !== workflow?.version)}
-                      title={selectedVersion !== null && selectedVersion !== workflow?.version ? "Cannot save when viewing an old version" : undefined}
-                    >
-                      Save
-                    </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  onClick={() => setShowWorkflowDetails(false)}
-                  title="Hide workflow details"
-                >
-                  <X className="h-4 w-4" />
+                  <Maximize2 className="h-4 w-4 text-secondary-700" />
                 </Button>
               </div>
+              
+              {/* Divider */}
+              <div className="w-px h-6 bg-secondary-200 mx-0.5" />
+              
+              {/* Save Button - Primary */}
+              <Button
+                size="sm"
+                className="h-8 px-4 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleSave}
+                disabled={!isDirty || (selectedVersion !== null && selectedVersion !== workflow?.version)}
+                title={selectedVersion !== null && selectedVersion !== workflow?.version ? "Cannot save when viewing an old version" : undefined}
+              >
+                Save
+              </Button>
             </div>
           </Card>
         </div>

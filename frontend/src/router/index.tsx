@@ -24,6 +24,10 @@ const WorkflowReportSettings = lazy(() => import("@/pages/WorkflowReportSettings
 const ObjectTypeList = lazy(() => import("@/pages/ObjectTypeList").then((module) => ({ default: module.default })))
 const ObjectTypeEditor = lazy(() => import("@/pages/ObjectTypeEditor").then((module) => ({ default: module.default })))
 const ExecutionVisualization = lazy(() => import("@/pages/ExecutionVisualization").then((module) => ({ default: module.default })))
+const TriggerList = lazy(() => import("@/pages/TriggerList").then((module) => ({ default: module.default })))
+const TriggerEditor = lazy(() => import("@/pages/TriggerEditor").then((module) => ({ default: module.default })))
+const ActionList = lazy(() => import("@/pages/ActionList").then((module) => ({ default: module.default })))
+const ActionEditor = lazy(() => import("@/pages/ActionEditor").then((module) => ({ default: module.default })))
 
 export const router = createBrowserRouter([
   {
@@ -165,6 +169,56 @@ export const router = createBrowserRouter([
                 {
                   path: ":id",
                   element: <LazyPage component={ObjectTypeEditor} />,
+                },
+              ],
+            },
+            {
+              path: "triggers",
+              children: [
+                {
+                  index: true,
+                  element: <LazyPage component={TriggerList} />,
+                },
+                {
+                  path: "new",
+                  element: <LazyPage component={TriggerEditor} />,
+                },
+                {
+                  path: ":id",
+                  element: <LazyPage component={TriggerEditor} />,
+                },
+                {
+                  path: ":id/edit",
+                  element: <LazyPage component={TriggerEditor} />,
+                },
+                {
+                  path: "workflow/:workflowId/new",
+                  element: <LazyPage component={TriggerEditor} />,
+                },
+                {
+                  path: "workflow/:workflowId/new/:type",
+                  element: <LazyPage component={TriggerEditor} />,
+                },
+              ],
+            },
+            {
+              path: "actions",
+              children: [
+                {
+                  index: true,
+                  element: <LazyPage component={ActionList} />,
+                },
+                {
+                  path: "new",
+                  element: <LazyPage component={ActionEditor} />,
+                },
+                {
+                  path: ":id",
+                  element: <LazyPage component={ActionEditor} />,
+                },
+                {
+                  path: ":id/edit",
+                  element: <LazyPage component={ActionEditor} />,
                 },
               ],
             },

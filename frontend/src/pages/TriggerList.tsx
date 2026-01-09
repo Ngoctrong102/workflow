@@ -207,7 +207,7 @@ export default function TriggerListPage() {
                       </TableCell>
                       <TableCell>
                         <div className="text-sm font-medium">
-                          {workflows.find((w) => w.id === trigger.workflow_id)?.name || trigger.workflow_id}
+                          {workflows.find((w) => w.id === trigger.workflowId)?.name || trigger.workflowId}
                         </div>
                       </TableCell>
                       <TableCell>
