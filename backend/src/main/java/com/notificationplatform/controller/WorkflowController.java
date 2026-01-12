@@ -1,17 +1,12 @@
 package com.notificationplatform.controller;
 
-import com.notificationplatform.dto.request.CreateApiTriggerRequest;
-import com.notificationplatform.dto.request.CreateEventTriggerRequest;
-import com.notificationplatform.dto.request.CreateFileTriggerRequest;
-import com.notificationplatform.dto.request.CreateScheduleTriggerRequest;
 import com.notificationplatform.dto.request.CreateWorkflowRequest;
 import com.notificationplatform.dto.request.ExecuteWorkflowRequest;
 import com.notificationplatform.dto.request.UpdateWorkflowRequest;
 import com.notificationplatform.dto.response.ExecutionResponse;
 import com.notificationplatform.dto.response.PagedResponse;
-import com.notificationplatform.dto.response.TriggerResponse;
 import com.notificationplatform.dto.response.WorkflowResponse;
-import com.notificationplatform.service.trigger.TriggerService;
+import com.notificationplatform.dto.response.WorkflowTriggerResponse;
 import com.notificationplatform.service.workflow.WorkflowService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -34,11 +29,9 @@ import java.util.Map;
 public class WorkflowController {
 
     private final WorkflowService workflowService;
-    private final TriggerService triggerService;
 
-    public WorkflowController(WorkflowService workflowService, TriggerService triggerService) {
+    public WorkflowController(WorkflowService workflowService) {
         this.workflowService = workflowService;
-        this.triggerService = triggerService;
     }
 
     @PostMapping
@@ -133,81 +126,16 @@ public class WorkflowController {
 
     // Trigger endpoints for workflows
     @GetMapping("/{workflowId}/triggers")
-    @Operation(summary = "List workflow triggers", description = "Get all triggers for a workflow")
+    @Operation(summary = "Get workflow triggers", description = "Get all trigger instances for a workflow with their configs and runtime states")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Triggers retrieved successfully",
-                    content = @Content(schema = @Schema(implementation = TriggerResponse.class)))
+                    content = @Content(schema = @Schema(implementation = WorkflowTriggerResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Workflow not found")
     })
-    public ResponseEntity<List<TriggerResponse>> listWorkflowTriggers(
+    public ResponseEntity<List<WorkflowTriggerResponse>> getWorkflowTriggers(
             @Parameter(description = "Workflow ID", required = true) @PathVariable String workflowId) {
-        List<TriggerResponse> responses = triggerService.listTriggers(workflowId);
+        List<WorkflowTriggerResponse> responses = workflowService.getWorkflowTriggers(workflowId);
         return ResponseEntity.ok(responses);
-    }
-
-    @PostMapping("/{workflowId}/triggers/api")
-    @Operation(summary = "Create API trigger", description = "Create an API trigger for a workflow")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "201", description = "API trigger created successfully",
-                    content = @Content(schema = @Schema(implementation = TriggerResponse.class))),
-            @ApiResponse(responseCode = "404", description = "Workflow not found"),
-            @ApiResponse(responseCode = "409", description = "Trigger path already exists"),
-            @ApiResponse(responseCode = "422", description = "Validation error")
-    })
-    public ResponseEntity<TriggerResponse> createApiTrigger(
-            @Parameter(description = "Workflow ID", required = true) @PathVariable String workflowId,
-            @Valid @RequestBody CreateApiTriggerRequest request) {
-        request.setWorkflowId(workflowId);
-        TriggerResponse response = triggerService.createApiTrigger(request);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
-    }
-
-    @PostMapping("/{workflowId}/triggers/schedule")
-    @Operation(summary = "Create schedule trigger", description = "Create a schedule trigger for a workflow")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "201", description = "Schedule trigger created successfully",
-                    content = @Content(schema = @Schema(implementation = TriggerResponse.class))),
-            @ApiResponse(responseCode = "404", description = "Workflow not found"),
-            @ApiResponse(responseCode = "422", description = "Invalid cron expression or validation error")
-    })
-    public ResponseEntity<TriggerResponse> createScheduleTrigger(
-            @Parameter(description = "Workflow ID", required = true) @PathVariable String workflowId,
-            @Valid @RequestBody CreateScheduleTriggerRequest request) {
-        request.setWorkflowId(workflowId);
-        TriggerResponse response = triggerService.createScheduleTrigger(request);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
-    }
-
-    @PostMapping("/{workflowId}/triggers/file")
-    @Operation(summary = "Create file trigger", description = "Create a file trigger for a workflow")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "201", description = "File trigger created successfully",
-                    content = @Content(schema = @Schema(implementation = TriggerResponse.class))),
-            @ApiResponse(responseCode = "404", description = "Workflow not found"),
-            @ApiResponse(responseCode = "422", description = "Validation error")
-    })
-    public ResponseEntity<TriggerResponse> createFileTrigger(
-            @Parameter(description = "Workflow ID", required = true) @PathVariable String workflowId,
-            @Valid @RequestBody CreateFileTriggerRequest request) {
-        request.setWorkflowId(workflowId);
-        TriggerResponse response = triggerService.createFileTrigger(request);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
-    }
-
-    @PostMapping("/{workflowId}/triggers/event")
-    @Operation(summary = "Create event trigger", description = "Create an event (Kafka) trigger for a workflow")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "201", description = "Event trigger created successfully",
-                    content = @Content(schema = @Schema(implementation = TriggerResponse.class))),
-            @ApiResponse(responseCode = "404", description = "Workflow not found"),
-            @ApiResponse(responseCode = "422", description = "Validation error"),
-            @ApiResponse(responseCode = "500", description = "Failed to connect to message queue")
-    })
-    public ResponseEntity<TriggerResponse> createEventTrigger(
-            @Parameter(description = "Workflow ID", required = true) @PathVariable String workflowId,
-            @Valid @RequestBody CreateEventTriggerRequest request) {
-        request.setWorkflowId(workflowId);
-        TriggerResponse response = triggerService.createEventTrigger(request);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
     // Workflow version endpoints

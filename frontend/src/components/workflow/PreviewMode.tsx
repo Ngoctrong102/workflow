@@ -28,10 +28,7 @@ export function PreviewMode({ nodes, edges, onClose, onTest }: PreviewModeProps)
     return nodeDef?.category === "logic"
   })
 
-  const dataNodes = nodes.filter((node) => {
-    const nodeDef = NODE_DEFINITIONS.find((n) => n.type === node.data.type)
-    return nodeDef?.category === "data"
-  })
+  // Data nodes are legacy - removed for now
 
   return (
     <Card className="h-full flex flex-col">
@@ -125,24 +122,7 @@ export function PreviewMode({ nodes, edges, onClose, onTest }: PreviewModeProps)
             </div>
           )}
 
-          {dataNodes.length > 0 && (
-            <div>
-              <h3 className="font-semibold mb-2 flex items-center space-x-2">
-                <span>Data</span>
-                <Badge variant="secondary">{dataNodes.length}</Badge>
-              </h3>
-              <div className="space-y-1">
-                {dataNodes.map((node) => (
-                  <div
-                    key={node.id}
-                    className="p-2 rounded border border-secondary-200 text-sm"
-                  >
-                    {node.data.label || node.id}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Data nodes are legacy - removed for now */}
         </div>
 
         {/* Execution Flow */}

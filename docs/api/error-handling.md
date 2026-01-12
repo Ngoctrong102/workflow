@@ -72,7 +72,7 @@ All error responses follow a standard format:
 #### `TEMPLATE_INVALID_VARIABLES`
 - **Status**: 422
 - **Message**: "Template contains invalid variables"
-- **Details**: `{"invalid_variables": ["{{invalid.var}}"]}`
+- **Details**: `{"invalid_variables": ["@{invalid.var}"]}`
 
 #### `TEMPLATE_RENDER_FAILED`
 - **Status**: 500

@@ -15,8 +15,10 @@ import ReactFlow, {
 } from "reactflow"
 import "reactflow/dist/style.css"
 import { WorkflowNode } from "./WorkflowNode"
-import type { WorkflowNodeType } from "@/types/workflow"
+import { NodeTypeEnum } from "@/types/workflow"
 import { NODE_DEFINITIONS } from "@/constants/workflow-nodes"
+import { useToast } from "@/hooks/use-toast"
+import { getNodeCategory } from "@/utils/node-type-utils"
 
 const nodeTypes: NodeTypes = {
   workflow: WorkflowNode,
@@ -40,8 +42,10 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   onAddNode: externalOnAddNode,
 }: WorkflowCanvasProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
+  const reactFlowInstanceRef = useRef<any>(null)
   const [nodes, setNodes, onNodesChangeInternal] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChangeInternal] = useEdgesState(initialEdges)
+  const { toast } = useToast()
 
   const handleConnect = useCallback(
     (params: Connection) => {
@@ -64,11 +68,64 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
       event.preventDefault()
       event.stopPropagation()
 
-      const nodeType = event.dataTransfer.getData("application/reactflow") as WorkflowNodeType
+      // Try to get node data from new format first
+      const nodeDataStr = event.dataTransfer.getData("application/reactflow-node")
+      let registryId: string | undefined
+      let configTemplate: Record<string, unknown> | undefined
+      let nodeType: NodeTypeEnum | undefined
+      let nodeLabel: string | undefined
+
+      if (nodeDataStr) {
+        try {
+          const nodeData = JSON.parse(nodeDataStr)
+          nodeType = nodeData.nodeType as NodeTypeEnum
+          nodeLabel = nodeData.label
+          registryId = nodeData.registryId
+          configTemplate = nodeData.configTemplate
+        } catch (error) {
+          console.warn('[WorkflowCanvas] Failed to parse node data:', error)
+        }
+      }
+
+      // Fallback to legacy format if new format not found
+      if (!nodeType) {
+        nodeType = event.dataTransfer.getData("application/reactflow") as NodeTypeEnum
+      }
 
       if (!nodeType) {
         console.warn('[WorkflowCanvas] No node type in drop event')
         return
+      }
+
+      // Validate: registryId is required for trigger and action nodes from registry
+      // nodeType should be a valid WorkflowNodeType
+      // Use helper function to correctly detect node category
+      // For new nodes being created, detect category based on registryId and nodeType
+      // If registryId exists and nodeType is TRIGGER, it's a trigger from registry
+      // If registryId exists and nodeType is ACTION, it's an action from registry
+      const nodeCategory = getNodeCategory(nodeType, configTemplate ? { registryId, configTemplate } : { registryId })
+      const isTrigger = nodeCategory === NodeTypeEnum.TRIGGER
+      const isAction = nodeCategory === NodeTypeEnum.ACTION
+      const isLogic = nodeCategory === NodeTypeEnum.LOGIC
+      
+      // Debug logging
+      if (import.meta.env.DEV) {
+        console.log('[WorkflowCanvas] Node category detection:', {
+          nodeType,
+          registryId,
+          nodeCategory,
+          isTrigger,
+          isAction,
+          isLogic,
+          hasConfigTemplate: !!configTemplate,
+        })
+      }
+      
+      // If this is a registry node (has registryId), validate it
+      if (registryId) {
+        // Registry nodes are valid (triggers or actions)
+      } else if (isTrigger) {
+        // Non-registry trigger nodes might be built-in, allow them
       }
 
       if (!reactFlowWrapper.current) {
@@ -76,39 +133,113 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         return
       }
 
+      // Find node definition - try from NODE_DEFINITIONS first, then use label from drag data
       const nodeDef = NODE_DEFINITIONS.find((n) => n.type === nodeType)
-      if (!nodeDef) {
-        console.warn('[WorkflowCanvas] Node definition not found for type:', nodeType)
-        return
-      }
+      const finalLabel = nodeLabel || nodeDef?.label || nodeType
 
       // Calculate position relative to ReactFlow viewport
+      // Account for ReactFlow's transform (zoom and pan) if available
       const reactFlowBounds = reactFlowWrapper.current.getBoundingClientRect()
-      const position = {
+      let position = {
         x: event.clientX - reactFlowBounds.left,
         y: event.clientY - reactFlowBounds.top,
       }
 
-      // Convert nodeType from kebab-case to camelCase for node ID
-      // e.g., "event-trigger" -> "eventTrigger", "send-webhook" -> "sendWebhook"
-      const camelCaseNodeType = nodeType
-        .split('-')
-        .map((word, index) => 
-          index === 0 
-            ? word.toLowerCase() 
-            : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-        )
-        .join('')
+      // If ReactFlow instance is available, use screenToFlowPosition
+      if (reactFlowInstanceRef.current?.screenToFlowPosition) {
+        position = reactFlowInstanceRef.current.screenToFlowPosition({
+          x: event.clientX - reactFlowBounds.left,
+          y: event.clientY - reactFlowBounds.top,
+        })
+      }
+      
+      console.log('[WorkflowCanvas] Drop position:', {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        bounds: reactFlowBounds,
+        calculatedPosition: position,
+      })
+
+      // Generate unique node ID
+      // For trigger nodes: use label (sanitized) to create short, MVEL-compatible IDs
+      // For action nodes: use registryId (already short like "call-webhook")
+      // For logic nodes: use nodeType
+      let nodeIdBase: string
+      if (isTrigger) {
+        // Use label for trigger nodes to create short IDs (e.g., "direct_debit_event_1234567890")
+        // This makes MVEL expressions easier to write
+        nodeIdBase = finalLabel.toLowerCase().replace(/[^a-z0-9]/g, '_')
+      } else if (isAction && registryId) {
+        // Action nodes: use registryId (already short)
+        nodeIdBase = registryId
+      } else {
+        // Fallback: use nodeType
+        nodeIdBase = nodeType
+      }
+      const nodeId = `${nodeIdBase}_${Date.now()}`
+      
+      // Backend expects:
+      // - For triggers: node.type = "TRIGGER", node.data.config.triggerConfigId = registryId
+      // - For actions: node.type = "ACTION", node.data.config.registryId = registryId
+      // - For logic: node.type = "LOGIC", node.data.config.subtype = nodeType
+      
+      // Build node data structure compatible with backend
+      const nodeData: Record<string, unknown> = {
+        label: finalLabel,
+        type: nodeType as NodeTypeEnum,
+      }
+      
+      // Add registry-specific fields
+      if (isTrigger && registryId) {
+        // Triggers: store triggerConfigId (which is the registryId from trigger registry)
+        nodeData.config = {
+          triggerConfigId: registryId,
+          ...(configTemplate && { configTemplate }),
+        }
+        console.log('[WorkflowCanvas] Created trigger node with triggerConfigId:', {
+          nodeId,
+          nodeType,
+          registryId,
+          triggerConfigId: registryId,
+          config: nodeData.config
+        })
+      } else if (isAction && registryId) {
+        // Actions: store registryId
+        nodeData.config = {
+          registryId: registryId,
+          ...(configTemplate && { configTemplate }),
+        }
+        console.log('[WorkflowCanvas] Created action node with registryId:', {
+          nodeId,
+          nodeType,
+          registryId,
+          config: nodeData.config
+        })
+      } else if (configTemplate) {
+        // Logic nodes or nodes with config template
+        nodeData.config = {
+          ...(configTemplate && { configTemplate }),
+        }
+      }
       
       const newNode: Node = {
-        id: `${camelCaseNodeType}${Date.now()}`,
+        id: nodeId,
         type: "workflow",
         position,
-        data: {
-          label: nodeDef.label,
-          type: nodeType,
-        },
+        data: nodeData,
       }
+      
+      console.log('[WorkflowCanvas] Creating new node:', {
+        nodeId,
+        nodeType,
+        registryId,
+        configTemplate: configTemplate ? 'present' : 'missing',
+        finalLabel,
+        position,
+        isTrigger,
+        isAction,
+        isLogic,
+      })
 
       // If external handler exists, use it; otherwise use internal state
       if (externalOnAddNode) {
@@ -124,7 +255,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         setNodes((nds) => nds.concat(newNode))
       }
     },
-    [setNodes, externalOnAddNode, externalOnNodesChange]
+    [setNodes, externalOnAddNode, externalOnNodesChange, toast, reactFlowInstanceRef]
   )
 
   // Use external handlers if provided, otherwise use internal state
@@ -164,12 +295,17 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   const nodeColor = useCallback(
     (node: Node) => {
       const nodeDef = NODE_DEFINITIONS.find(
-        (n) => n.type === (node.data?.type as WorkflowNodeType)
+        (n) => n.type === (node.data?.type as NodeTypeEnum)
       )
       return nodeDef?.color || "#64748b"
     },
     []
   )
+
+  // Store ReactFlow instance when initialized
+  const onInit = useCallback((reactFlowInstance: any) => {
+    reactFlowInstanceRef.current = reactFlowInstance
+  }, [])
 
   return (
     <div className="w-full h-full" ref={reactFlowWrapper}>
@@ -181,6 +317,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         onConnect={handleConnect}
         onDrop={onDrop}
         onDragOver={onDragOver}
+        onInit={onInit}
         onNodeClick={() => {
           // Selection is handled by react-flow through onNodesChange
         }}
@@ -204,4 +341,5 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     </div>
   )
 })
+
 

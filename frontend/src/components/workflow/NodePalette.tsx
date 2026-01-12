@@ -8,7 +8,7 @@ import { Search, X } from "lucide-react"
 import { NODES_BY_CATEGORY, NODE_DEFINITIONS, NODE_ICONS } from "@/constants/workflow-nodes"
 import { useTriggerRegistry } from "@/hooks/use-trigger-registry"
 import { useActionRegistry } from "@/hooks/use-action-registry"
-import type { NodeType } from "@/types/workflow"
+import { NodeTypeEnum } from "@/types/workflow"
 import { cn } from "@/lib/utils"
 import { HelpTooltip } from "@/components/common/HelpTooltip"
 import type { NodeDefinition } from "@/types/workflow"
@@ -18,16 +18,15 @@ interface NodePaletteProps {
   onClose?: () => void
 }
 
-const categoryLabels: Record<NodeType, string> = {
-  trigger: "Triggers",
-  action: "Actions",
-  logic: "Logic",
-  data: "Data",
+const categoryLabels: Record<NodeTypeEnum, string> = {
+  [NodeTypeEnum.TRIGGER]: "Triggers",
+  [NodeTypeEnum.ACTION]: "Actions",
+  [NodeTypeEnum.LOGIC]: "Logic",
 }
 
 export function NodePalette({ onNodeDragStart, onClose }: NodePaletteProps) {
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState<NodeType | "all">("all")
+  const [selectedCategory, setSelectedCategory] = useState<NodeTypeEnum | "all">("all")
   const [selectedActionType, setSelectedActionType] = useState<string>("all")
   
   // Fetch triggers and actions from registry
@@ -45,19 +44,10 @@ export function NodePalette({ onNodeDragStart, onClose }: NodePaletteProps) {
     
     if (actionRegistry?.actions) {
       actionRegistry.actions.forEach((action) => {
-        // Map action type to node type
-        let nodeType: string = action.type
-        if (action.type === "api-call") nodeType = "api-call"
-        else if (action.type === "publish-event") nodeType = "publish-event"
-        else if (action.type === "function") nodeType = "function"
-        else if (action.type === "custom-action") {
-          // Use actionType for custom actions (e.g., "send-email")
-          nodeType = (action as any).actionType || action.id
-        }
-        
+        // Actions from registry are identified by registryId, not by node type
+        // Backend uses NodeTypeEnum.ACTION as node.type and stores registryId in node.data.config.registryId
         const nodeDef: NodeDefinition = {
-          type: nodeType as any,
-          category: "action",
+          type: NodeTypeEnum.ACTION,
           label: action.name,
           description: action.description || "",
           icon: action.metadata?.icon || "api-call",
@@ -66,9 +56,10 @@ export function NodePalette({ onNodeDragStart, onClose }: NodePaletteProps) {
           outputs: 1,
           // Store registry ID and config template for later use
           registryId: action.id,
-          configTemplate: action.configTemplate,
+          configTemplate: action.configTemplate as Record<string, unknown> | undefined,
         }
         
+        // Group by ActionType (api-call, publish-event, function, custom-action)
         const actionType = action.type || "custom-action"
         if (groups[actionType]) {
           groups[actionType].push(nodeDef)
@@ -88,22 +79,20 @@ export function NodePalette({ onNodeDragStart, onClose }: NodePaletteProps) {
     // Add trigger nodes from registry
     if (triggerRegistry?.triggers) {
       triggerRegistry.triggers.forEach((trigger) => {
-        // Map trigger type to node type
-        let nodeType: string = trigger.type
-        if (trigger.type === "api-call") nodeType = "api-trigger"
-        else if (trigger.type === "scheduler") nodeType = "schedule-trigger"
-        else if (trigger.type === "event") nodeType = "event-trigger"
-        else if (trigger.type === "file") nodeType = "file-trigger"
-        
+        // Triggers from registry use NodeTypeEnum.TRIGGER
+        // They are identified by triggerConfigId in node.data.config
         nodes.push({
-          type: nodeType as any,
-          category: "trigger",
+          type: NodeTypeEnum.TRIGGER,
           label: trigger.name,
           description: trigger.description || "",
-          icon: trigger.metadata?.icon || "api-trigger",
+          icon: trigger.metadata?.icon || "api-call",
           color: trigger.metadata?.color || "#0ea5e9",
           inputs: 0,
           outputs: 1,
+          // Store registry ID (trigger config ID) and config template for later use
+          // Backend expects triggerConfigId in node.data.config.triggerConfigId
+          registryId: trigger.id, // This is the trigger config ID
+          configTemplate: trigger.configTemplate as Record<string, unknown> | undefined,
         })
       })
     }
@@ -114,7 +103,7 @@ export function NodePalette({ onNodeDragStart, onClose }: NodePaletteProps) {
     })
     
     // Add built-in logic nodes from constants
-    const logicNodes = NODE_DEFINITIONS.filter((n) => n.category === "logic")
+    const logicNodes = NODE_DEFINITIONS.filter((n) => n.type === NodeTypeEnum.LOGIC)
     nodes.push(...logicNodes)
     
     return nodes
@@ -125,14 +114,14 @@ export function NodePalette({ onNodeDragStart, onClose }: NodePaletteProps) {
       node.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
       node.description.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesCategory =
-      selectedCategory === "all" || node.category === selectedCategory
+      selectedCategory === "all" || node.type === selectedCategory
     
     // Filter actions by type if action category is selected
     let matchesActionType = true
-    if (node.category === "action" && selectedCategory === "action" && selectedActionType !== "all") {
+    if (node.type === NodeTypeEnum.ACTION && selectedCategory === NodeTypeEnum.ACTION && selectedActionType !== "all") {
       // Find which type group this action belongs to
       const actionType = Object.keys(actionsByType).find((type) =>
-        actionsByType[type].some((a) => a.type === node.type)
+        actionsByType[type].some((a) => a.registryId === node.registryId)
       )
       matchesActionType = actionType === selectedActionType
     }
@@ -143,7 +132,20 @@ export function NodePalette({ onNodeDragStart, onClose }: NodePaletteProps) {
   const isLoading = isLoadingTriggers || isLoadingActions
 
   const handleDragStart = (event: React.DragEvent, nodeType: string) => {
+    // Find node definition to get registryId, configTemplate, and label
+    const nodeDef = allNodes.find((n) => n.type === nodeType || (n.registryId && n.type === nodeType))
+    
+    // Set legacy data for backward compatibility
     event.dataTransfer.setData("application/reactflow", nodeType)
+    
+    // Set new data format with registryId, configTemplate, and label
+    event.dataTransfer.setData("application/reactflow-node", JSON.stringify({
+      nodeType,
+      label: nodeDef?.label || nodeType,
+      registryId: nodeDef?.registryId,
+      configTemplate: nodeDef?.configTemplate,
+    }))
+    
     event.dataTransfer.effectAllowed = "move"
     onNodeDragStart?.(event, nodeType)
   }
@@ -193,14 +195,14 @@ export function NodePalette({ onNodeDragStart, onClose }: NodePaletteProps) {
           >
             All
           </Badge>
-          {(Object.keys(NODES_BY_CATEGORY) as NodeType[]).map((category) => (
+          {Object.values(NodeTypeEnum).map((category) => (
             <Badge
               key={category}
               variant={selectedCategory === category ? "default" : "outline"}
               className="cursor-pointer"
               onClick={() => {
                 setSelectedCategory(category)
-                if (category !== "action") {
+                if (category !== NodeTypeEnum.ACTION) {
                   setSelectedActionType("all")
                 }
               }}
@@ -211,7 +213,7 @@ export function NodePalette({ onNodeDragStart, onClose }: NodePaletteProps) {
         </div>
 
         {/* Action Type Filters (shown when Actions category is selected) */}
-        {selectedCategory === "action" && (
+        {selectedCategory === NodeTypeEnum.ACTION && (
           <div className="flex flex-wrap gap-2">
             <Badge
               variant={selectedActionType === "all" ? "default" : "outline"}
@@ -265,10 +267,10 @@ export function NodePalette({ onNodeDragStart, onClose }: NodePaletteProps) {
             </div>
           ) : (
             filteredNodes.map((node) => {
-              const IconComponent = NODE_ICONS[node.icon] || NODE_ICONS["api-trigger"]
+              const IconComponent = NODE_ICONS[node.icon] || NODE_ICONS["api-call"]
               return (
                 <div
-                  key={node.type}
+                  key={`${node.type}-${node.registryId || node.label}`}
                   draggable
                   onDragStart={(e) => handleDragStart(e, node.type)}
                   className={cn(
@@ -308,4 +310,3 @@ export function NodePalette({ onNodeDragStart, onClose }: NodePaletteProps) {
     </Card>
   )
 }
-

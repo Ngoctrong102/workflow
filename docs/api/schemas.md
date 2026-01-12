@@ -65,7 +65,7 @@ ISO 8601 format: `2024-01-01T00:00:00Z`
       },
       "data": {
         "template_id": "template-123",
-        "recipients": "{{data.recipients}}"
+        "recipients": "@{_trigger.recipients}"
       }
     }
   ],
@@ -93,7 +93,7 @@ ISO 8601 format: `2024-01-01T00:00:00Z`
   "id": "template-123",
   "name": "Welcome Email Template",
   "channel": "email",
-  "subject": "Welcome {{user.name}}!",
+  "subject": "Welcome @{user.name}!",
   "body": "<html><body>...</body></html>",
   "variables": [
     {

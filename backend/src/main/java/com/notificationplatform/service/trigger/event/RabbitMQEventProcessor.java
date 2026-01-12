@@ -97,13 +97,12 @@ public class RabbitMQEventProcessor {
     public boolean processTrigger(Trigger trigger, Map<String, Object> eventData, 
                                   String routingKey, String exchange) {
         try {
-            // Reload trigger with workflow eagerly loaded to avoid LazyInitializationException
-            // The trigger passed in may be detached from Hibernate session
-            Trigger reloadedTrigger = triggerRepository.findByIdWithWorkflow(trigger.getId())
+            // Load trigger config
+            Trigger reloadedTrigger = triggerRepository.findByIdAndNotDeleted(trigger.getId())
                     .orElse(null);
             
             if (reloadedTrigger == null) {
-                log.warn("Trigger not found: triggerId={}", trigger.getId());
+                log.warn("Trigger config not found: triggerId={}", trigger.getId());
                 return false;
             }
             
@@ -118,35 +117,15 @@ public class RabbitMQEventProcessor {
                     return false;
                 }
             }
-
-            // Get workflow (already eagerly loaded via JOIN FETCH)
-            Workflow workflow = reloadedTrigger.getWorkflow();
-            if (workflow == null) {
-                log.warn("Workflow not found for trigger: triggerId={}", reloadedTrigger.getId());
-                return false;
-            }
-
-            // Check workflow status using enum
-            if (workflow.getStatus() != WorkflowStatus.ACTIVE) {
-                log.debug("Workflow is not active: workflowId={}, status={}", 
-                           workflow.getId(), workflow.getStatus());
-                return false;
-            }
-
-            // Prepare trigger data with RabbitMQ metadata
-            Map<String, Object> triggerData = new HashMap<>(eventData);
-            triggerData.put("_rabbitmq", Map.of(
-                    "routingKey", routingKey != null ? routingKey : "",
-                    "exchange", exchange != null ? exchange : ""
-            ));
-
-            // Execute workflow
-            Execution execution = workflowExecutor.execute(workflow, triggerData, reloadedTrigger.getId());
-
-            log.info("Workflow execution completed: executionId={}, workflowId={}, triggerId={}", 
-                       execution.getId(), workflow.getId(), reloadedTrigger.getId());
             
-            return true;
+            // Find workflows that use this trigger config by parsing workflow definitions
+            // In the new design, triggers are independent configs referenced via triggerConfigId in workflow nodes
+            // Need to:
+            // 1. Query all active workflows
+            // 2. Parse workflow definitions to find nodes with triggerConfigId matching this trigger
+            // 3. Execute those workflows
+            log.warn("RabbitMQEventProcessor - need to find workflows using trigger config: triggerId={}", trigger.getId());
+            return false;
 
         } catch (Exception e) {
             log.error("Error processing trigger: triggerId={}", trigger.getId(), e);

@@ -24,8 +24,8 @@ import java.util.Map;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = {"triggers", "executions", "notifications"})
-@EqualsAndHashCode(exclude = {"triggers", "executions", "notifications"})
+@ToString(exclude = {"executions"})
+@EqualsAndHashCode(exclude = {"executions"})
 @Slf4j
 public class Workflow {
 
@@ -74,14 +74,8 @@ public class Workflow {
     private LocalDateTime deletedAt;
 
     // Relationships
-    @OneToMany(mappedBy = "workflow", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Trigger> triggers = new ArrayList<>();
-
     @OneToMany(mappedBy = "workflow")
     private List<Execution> executions = new ArrayList<>();
-
-    @OneToMany(mappedBy = "workflow")
-    private List<Notification> notifications = new ArrayList<>();
 
     @OneToOne(mappedBy = "workflow", cascade = CascadeType.ALL, orphanRemoval = true)
     private WorkflowReport workflowReport;

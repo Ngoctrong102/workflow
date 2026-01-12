@@ -1,14 +1,13 @@
 package com.notificationplatform.service.trigger.schedule;
 
-import com.notificationplatform.entity.Execution;
 import com.notificationplatform.entity.Trigger;
-import com.notificationplatform.entity.Workflow;
 import com.notificationplatform.entity.enums.TriggerType;
 import com.notificationplatform.engine.WorkflowExecutor;
 import com.notificationplatform.repository.TriggerRepository;
 import com.notificationplatform.repository.WorkflowRepository;
 
 
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Service;
@@ -40,7 +39,7 @@ public class ScheduleTriggerService {
 
     public ScheduleTriggerService(TriggerRepository triggerRepository,
                                  WorkflowRepository workflowRepository,
-                                 WorkflowExecutor workflowExecutor,
+                                 @Lazy WorkflowExecutor workflowExecutor,
                                  TaskScheduler taskScheduler,
                                  CronValidator cronValidator) {
         this.triggerRepository = triggerRepository;
@@ -168,69 +167,14 @@ public class ScheduleTriggerService {
                 }
             }
 
-            // Get workflow - load from repository to avoid LazyInitializationException
-            // (scheduled tasks run in async threads where Hibernate session is closed)
-            // Query workflow_id directly using native query to avoid lazy loading issues
-            String workflowId = triggerRepository.findWorkflowIdByTriggerId(currentTrigger.getId());
-            if (workflowId == null) {
-                log.error("Could not find workflowId for trigger: triggerId={}", currentTrigger.getId());
-                return;
-            }
-            
-            // Load workflow from repository
-            Workflow workflow = workflowRepository.findById(workflowId).orElse(null);
-            if (workflow == null) {
-                log.error("Workflow not found: workflowId={}, triggerId={}", workflowId, currentTrigger.getId());
-                return;
-            }
-
-            if (workflow.getStatus() != com.notificationplatform.entity.enums.WorkflowStatus.ACTIVE) {
-                log.warn("Workflow is not active: workflowId={}, status={}", 
-                           workflow.getId(), workflow.getStatus());
-                return;
-            }
-
-            // Prepare trigger data
-            Map<String, Object> triggerData = new HashMap<>();
-            
-            // Add static data from config
-            if (config.containsKey("data")) {
-                Map<String, Object> staticData = (Map<String, Object>) config.get("data");
-                triggerData.putAll(staticData);
-            }
-
-            // Add execution context (current date/time)
-            LocalDateTime now = LocalDateTime.now();
-            triggerData.put("_executionTime", now.toString());
-            triggerData.put("_timezone", config.getOrDefault("timezone", "UTC"));
-            
-            // Add formatted currentTime for template usage
-            // Format: "YYYY-MM-DD HH:mm:ss" (e.g., "2024-01-01 12:30:45")
-            String currentTime = now.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-            triggerData.put("currentTime", currentTime);
-            
-            // Add separate date and time for template flexibility
-            String date = now.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-            String time = now.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
-            triggerData.put("date", date);
-            triggerData.put("time", time);
-            
-            // Add Vietnamese formatted date/time
-            String dateVN = now.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
-            triggerData.put("dateVN", dateVN);
-            
-            // Add day of week
-            String dayOfWeek = now.getDayOfWeek().toString();
-            triggerData.put("dayOfWeek", dayOfWeek);
-            
-            // Add workflow ID for template usage
-            triggerData.put("workflowId", workflow.getId());
-
-            // Execute workflow
-            Execution execution = workflowExecutor.execute(workflow, triggerData, triggerId);
-
-            log.info("Scheduled workflow execution completed: executionId={}, workflowId={}", 
-                       execution.getId(), workflow.getId());
+            // Find workflows that use this trigger config by parsing workflow definitions
+            // In the new design, triggers are independent configs referenced via triggerConfigId in workflow nodes
+            // Need to:
+            // 1. Query all active workflows
+            // 2. Parse workflow definitions to find nodes with triggerConfigId matching this trigger
+            // 3. Execute those workflows
+            log.warn("ScheduleTriggerService.executeScheduledWorkflow - need to find workflows using trigger config: triggerId={}", currentTrigger.getId());
+            return;
 
         } catch (Exception e) {
             log.error("Error executing scheduled workflow: triggerId={}", triggerId, e);

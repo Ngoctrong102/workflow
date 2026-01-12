@@ -147,8 +147,14 @@ public class WorkflowExecutor {
         int count = 0;
 
         try {
-            // Execute node - validate and convert node type
-            String nodeTypeStr = (String) node.get("type");
+            // Execute node - support both old and new node structures
+            // Old structure: { "id": "node-1", "type": "trigger", "data": {...} }
+            // New structure: { "id": "node-1", "nodeType": "trigger", "nodeConfig": {...} }
+            String nodeTypeStr = (String) node.get("nodeType"); // New structure
+            if (nodeTypeStr == null) {
+                nodeTypeStr = (String) node.get("type"); // Old structure (backward compatibility)
+            }
+            
             if (nodeTypeStr == null) {
                 log.warn("Node type is missing for node: {}", nodeId);
                 createNodeExecution(execution, nodeId, NodeExecutionStatus.FAILED.getValue(), null, null, 
@@ -185,9 +191,8 @@ public class WorkflowExecutor {
 
             long startTime = System.currentTimeMillis();
             
-            // Execute node
-            Map<String, Object> nodeData = node.containsKey("data") ? 
-                (Map<String, Object>) node.get("data") : new HashMap<>();
+            // Extract node data - support both old and new structures
+            Map<String, Object> nodeData = extractNodeData(node);
             
             NodeExecutionResult result = executor.execute(nodeId, nodeData, context);
 
@@ -538,6 +543,36 @@ public class WorkflowExecutor {
     }
 
     /**
+     * Extract node data from node structure.
+     * Supports both old and new structures:
+     * - Old: { "id": "node-1", "type": "trigger", "data": {...} }
+     * - New: { "id": "node-1", "nodeType": "trigger", "nodeConfig": {...} }
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> extractNodeData(Map<String, Object> node) {
+        // New structure: nodeConfig
+        if (node.containsKey("nodeConfig")) {
+            Map<String, Object> nodeConfig = (Map<String, Object>) node.get("nodeConfig");
+            // Include nodeConfig and also add nodeType for backward compatibility
+            Map<String, Object> nodeData = new HashMap<>(nodeConfig);
+            nodeData.put("nodeType", node.get("nodeType"));
+            return nodeData;
+        }
+        
+        // Old structure: data (backward compatibility)
+        if (node.containsKey("data")) {
+            Map<String, Object> data = (Map<String, Object>) node.get("data");
+            // Also include type for backward compatibility
+            Map<String, Object> nodeData = new HashMap<>(data);
+            nodeData.put("type", node.get("type"));
+            return nodeData;
+        }
+        
+        // No data found, return empty map
+        return new HashMap<>();
+    }
+
+    /**
      * Find the first trigger node ID in the workflow
      * Used to map trigger data to trigger node
      */
@@ -547,7 +582,12 @@ public class WorkflowExecutor {
         }
         
         for (Map<String, Object> node : nodes) {
-            String nodeTypeStr = (String) node.get("type");
+            // Support both old and new structures
+            String nodeTypeStr = (String) node.get("nodeType"); // New structure
+            if (nodeTypeStr == null) {
+                nodeTypeStr = (String) node.get("type"); // Old structure (backward compatibility)
+            }
+            
             NodeType nodeType = null;
             if (nodeTypeStr != null) {
                 try {
@@ -572,11 +612,9 @@ public class WorkflowExecutor {
         if (nodeType == null) {
             return false;
         }
-        return nodeType == NodeType.TRIGGER ||
-               nodeType == NodeType.API_TRIGGER ||
-               nodeType == NodeType.SCHEDULE_TRIGGER ||
-               nodeType == NodeType.FILE_TRIGGER ||
-               nodeType == NodeType.EVENT_TRIGGER;
+        // All trigger subtypes (api-call, scheduler, event) use TRIGGER node type
+        // Subtype is stored in node.data.config.subtype or node.data.config.registryId
+        return nodeType == NodeType.TRIGGER;
     }
 }
 

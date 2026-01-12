@@ -157,16 +157,17 @@ Response:
 - `PUT /templates/{id}` - Update template
 - `DELETE /templates/{id}` - Delete template
 
-### Triggers
-- `GET /workflows/{id}/triggers` - List triggers
-- `GET /triggers/{id}` - Get trigger
-- `POST /workflows/{id}/triggers/api` - Create API trigger
-- `POST /workflows/{id}/triggers/schedule` - Create schedule trigger
-- `POST /workflows/{id}/triggers/file` - Create file trigger
-- `POST /workflows/{id}/triggers/event` - Create event trigger
-- `PUT /triggers/{id}` - Update trigger
-- `DELETE /triggers/{id}` - Delete trigger
+### Trigger Configs
+- `POST /triggers` - Create trigger config
+- `GET /triggers` - List trigger configs
+- `GET /triggers/{id}` - Get trigger config
+- `PUT /triggers/{id}` - Update trigger config
+- `DELETE /triggers/{id}` - Delete trigger config
+- `GET /triggers/registry` - Get trigger configs from registry
+- `GET /workflows/{id}/triggers` - Get trigger instances for workflow
 - `POST /trigger/{path}` - Trigger workflow (API trigger endpoint)
+
+**Note**: Trigger configs are created independently and can be reused across multiple workflows. Trigger instances are created when trigger configs are linked to workflow nodes.
 
 ### Notifications
 - `POST /notifications/send` - Send notification

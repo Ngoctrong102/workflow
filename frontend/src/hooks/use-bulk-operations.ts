@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useToast } from "@/hooks/use-toast"
 import { workflowService } from "@/services/workflow-service"
-import { templateService } from "@/services/template-service"
 import { executionService } from "@/services/execution-service"
 import { getUserFriendlyErrorMessage, type ApiException } from "@/utils/error-handler"
 
@@ -71,39 +70,6 @@ export function useBulkUpdateWorkflowStatus() {
       toast({
         variant: "destructive",
         title: "Bulk Update Failed",
-        description: getUserFriendlyErrorMessage(error),
-      })
-    },
-  })
-}
-
-export function useBulkDeleteTemplates() {
-  const queryClient = useQueryClient()
-  const { toast } = useToast()
-
-  return useMutation({
-    mutationFn: async (ids: string[]) => {
-      return await templateService.bulkDelete(ids)
-    },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["templates"] })
-      if (result.errors && result.errors.length > 0) {
-        toast({
-          variant: "destructive",
-          title: "Partial Success",
-          description: `${result.deleted} templates deleted. ${result.errors.length} failed.`,
-        })
-      } else {
-        toast({
-          title: "Templates Deleted",
-          description: `${result.deleted} template${result.deleted !== 1 ? "s" : ""} deleted successfully`,
-        })
-      }
-    },
-    onError: (error: ApiException) => {
-      toast({
-        variant: "destructive",
-        title: "Bulk Delete Failed",
         description: getUserFriendlyErrorMessage(error),
       })
     },

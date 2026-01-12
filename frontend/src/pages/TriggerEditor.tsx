@@ -3,8 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { ChevronLeft } from "lucide-react"
 import { TriggerEditor } from "@/components/trigger/TriggerEditor"
-import { useTrigger } from "@/hooks/use-triggers"
-import { useCreateApiTrigger, useCreateScheduleTrigger, useCreateFileTrigger, useCreateEventTrigger, useUpdateTrigger } from "@/hooks/use-triggers"
+import { useTrigger, useCreateTriggerConfig, useUpdateTriggerConfig } from "@/hooks/use-triggers"
 import { useToast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { TriggerType } from "@/types/trigger"
@@ -18,108 +17,60 @@ export default function TriggerEditorPage() {
   // Get trigger if editing
   const { data: trigger, isLoading: isLoadingTrigger } = useTrigger(id)
 
-  const createApiTrigger = useCreateApiTrigger()
-  const createScheduleTrigger = useCreateScheduleTrigger()
-  const createFileTrigger = useCreateFileTrigger()
-  const createEventTrigger = useCreateEventTrigger()
-  const updateTrigger = useUpdateTrigger()
+  const createTriggerConfig = useCreateTriggerConfig()
+  const updateTriggerConfig = useUpdateTriggerConfig()
 
   const triggerType: TriggerType = (type || trigger?.type || "api") as TriggerType
-  const actualWorkflowId = workflowId || trigger?.workflow_id || ""
 
-  const handleSave = async (config: Record<string, unknown>) => {
+  // Map frontend trigger types to backend trigger types
+  const mapTriggerTypeToBackend = (type: TriggerType): "api-call" | "scheduler" | "event" => {
+    switch (type) {
+      case "api":
+        return "api-call"
+      case "schedule":
+        return "scheduler"
+      case "event":
+        return "event"
+      default:
+        return "api-call"
+    }
+  }
+
+  const handleSave = async (data: { name?: string; triggerType?: string; status?: string; config: Record<string, unknown> }) => {
     try {
       if (isEditMode && trigger) {
-        // Update existing trigger
-        await updateTrigger.mutateAsync({
+        // Update existing trigger config
+        await updateTriggerConfig.mutateAsync({
           id: trigger.id,
-          config,
+          data: {
+            name: data.name,
+            triggerType: data.triggerType as "api-call" | "scheduler" | "event" | undefined,
+            status: data.status as "active" | "inactive" | undefined,
+            config: data.config,
+          },
         })
-        toast({
-          title: "Success",
-          description: "Trigger updated successfully",
-        })
-        navigate(`/workflows/${trigger.workflowId}`)
+        navigate("/triggers")
       } else {
-        // Create new trigger
-        switch (triggerType) {
-          case "api":
-            const apiResult = await createApiTrigger.mutateAsync({
-              workflowId: actualWorkflowId,
-              path: config.path as string,
-              method: config.method as "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
-              authentication: config.authentication as {
-                type: "none" | "api_key" | "bearer"
-                key?: string
-              },
-            })
-            toast({
-              title: "Success",
-              description: "API trigger created successfully",
-            })
-            navigate(`/workflows/${actualWorkflowId}`)
-            break
-          case "schedule":
-            await createScheduleTrigger.mutateAsync({
-              workflowId: actualWorkflowId,
-              cronExpression: config.cronExpression as string,
-              timezone: config.timezone as string,
-              startDate: config.startDate as string,
-              endDate: config.endDate as string,
-              data: config.data as Record<string, unknown>,
-            })
-            toast({
-              title: "Success",
-              description: "Schedule trigger created successfully",
-            })
-            navigate(`/workflows/${actualWorkflowId}`)
-            break
-          case "file":
-            await createFileTrigger.mutateAsync({
-              workflowId: actualWorkflowId,
-              formats: config.formats as string[],
-              mapping: config.mapping as Record<string, string>,
-              destination: config.destination as string,
-            })
-            toast({
-              title: "Success",
-              description: "File trigger created successfully",
-            })
-            navigate(`/workflows/${actualWorkflowId}`)
-            break
-          case "event":
-            await createEventTrigger.mutateAsync({
-              workflowId: actualWorkflowId,
-              source: config.source as "kafka" | "rabbitmq",
-              topic: config.topic as string,
-              queue: config.queue as string,
-              filters: config.filters as Record<string, unknown>,
-            })
-            toast({
-              title: "Success",
-              description: "Event trigger created successfully",
-            })
-            navigate(`/workflows/${actualWorkflowId}`)
-            break
-        }
+        // Create new trigger config
+        await createTriggerConfig.mutateAsync({
+          name: data.name || `Trigger ${triggerType}`,
+          triggerType: mapTriggerTypeToBackend(triggerType),
+          status: (data.status as "active" | "inactive") || "active",
+          config: data.config,
+        })
+        navigate("/triggers")
       }
     } catch (error) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save trigger",
+        description: error instanceof Error ? error.message : "Failed to save trigger config",
       })
     }
   }
 
   const handleCancel = () => {
-    if (isEditMode && trigger) {
-      navigate(`/workflows/${trigger.workflowId}`)
-    } else if (workflowId) {
-      navigate(`/workflows/${workflowId}`)
-    } else {
-      navigate("/triggers")
-    }
+    navigate("/triggers")
   }
 
   if (isEditMode && isLoadingTrigger) {
@@ -163,11 +114,11 @@ export default function TriggerEditorPage() {
       </div>
 
       <TriggerEditor
-        workflowId={actualWorkflowId}
         triggerType={triggerType}
         trigger={trigger}
         onSave={handleSave}
         onCancel={handleCancel}
+        showNameAndStatus={true}
       />
     </div>
   )

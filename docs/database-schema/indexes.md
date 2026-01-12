@@ -17,34 +17,26 @@ CREATE INDEX idx_workflows_created_at ON workflows(created_at);
 CREATE INDEX idx_workflows_deleted_at ON workflows(deleted_at) WHERE deleted_at IS NULL;
 ```
 
-### Trigger Definitions
+### Triggers (Trigger Configs)
 ```sql
-CREATE INDEX idx_trigger_definitions_type ON trigger_definitions(type);
-CREATE INDEX idx_trigger_definitions_enabled ON trigger_definitions(enabled);
-CREATE INDEX idx_trigger_definitions_deleted_at ON trigger_definitions(deleted_at) WHERE deleted_at IS NULL;
+CREATE INDEX idx_triggers_trigger_type ON triggers(trigger_type);
+CREATE INDEX idx_triggers_status ON triggers(status);
+CREATE INDEX idx_triggers_deleted_at ON triggers(deleted_at) WHERE deleted_at IS NULL;
+CREATE INDEX idx_triggers_config ON triggers USING GIN (config);
 ```
 
-### Action Definitions
+### Actions (Action Registry)
 ```sql
-CREATE INDEX idx_action_definitions_type ON action_definitions(type);
-CREATE INDEX idx_action_definitions_action_type ON action_definitions(action_type);
-CREATE INDEX idx_action_definitions_enabled ON action_definitions(enabled);
-CREATE INDEX idx_action_definitions_deleted_at ON action_definitions(deleted_at) WHERE deleted_at IS NULL;
-```
-
-### Trigger Instances
-```sql
-CREATE INDEX idx_trigger_instances_workflow_id ON trigger_instances(workflow_id);
-CREATE INDEX idx_trigger_instances_trigger_definition_id ON trigger_instances(trigger_definition_id);
-CREATE INDEX idx_trigger_instances_instance_state ON trigger_instances(instance_state);
-CREATE INDEX idx_trigger_instances_status ON trigger_instances(status);
-CREATE INDEX idx_trigger_instances_deleted_at ON trigger_instances(deleted_at) WHERE deleted_at IS NULL;
+CREATE INDEX idx_actions_type ON actions(type);
+CREATE INDEX idx_actions_action_type ON actions(action_type);
+CREATE INDEX idx_actions_enabled ON actions(enabled);
+CREATE INDEX idx_actions_deleted_at ON actions(deleted_at) WHERE deleted_at IS NULL;
 ```
 
 ### Executions
 ```sql
 CREATE INDEX idx_executions_workflow_id ON executions(workflow_id);
-CREATE INDEX idx_executions_trigger_instance_id ON executions(trigger_instance_id);
+CREATE INDEX idx_executions_trigger_id ON executions(trigger_id);
 CREATE INDEX idx_executions_status ON executions(status);
 CREATE INDEX idx_executions_started_at ON executions(started_at);
 CREATE INDEX idx_executions_created_at ON executions(created_at);
@@ -96,9 +88,8 @@ CREATE INDEX idx_analytics_daily_date_workflow ON analytics_daily(date, workflow
 Partial indexes for soft-deleted records:
 ```sql
 CREATE INDEX idx_workflows_active ON workflows(id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_trigger_definitions_active ON trigger_definitions(id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_action_definitions_active ON action_definitions(id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_trigger_instances_active ON trigger_instances(id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_triggers_active ON triggers(id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_actions_active ON actions(id) WHERE deleted_at IS NULL;
 ```
 
 ## Performance Considerations

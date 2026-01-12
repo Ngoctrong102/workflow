@@ -224,7 +224,9 @@ public class DataNodeExecutor implements NodeExecutor {
 
     @Override
     public com.notificationplatform.entity.enums.NodeType getNodeType() {
-        return com.notificationplatform.entity.enums.NodeType.DATA;
+        // Data transformation nodes (map, filter, transform) are operations,
+        // so they use ACTION node type. Subtype is stored in node.data.config.subtype
+        return com.notificationplatform.entity.enums.NodeType.ACTION;
     }
 }
 

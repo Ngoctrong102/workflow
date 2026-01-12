@@ -1,7 +1,6 @@
 package com.notificationplatform.controller;
 
 import com.notificationplatform.dto.response.PagedResponse;
-import com.notificationplatform.dto.response.WorkflowChannelPerformanceDTO;
 import com.notificationplatform.dto.response.WorkflowDashboardDTO;
 import com.notificationplatform.dto.response.WorkflowErrorAnalysisDTO;
 import com.notificationplatform.dto.response.WorkflowExecutionTrendDTO;
@@ -88,24 +87,6 @@ public class WorkflowDashboardController {
         List<WorkflowNodePerformanceDTO> nodePerformance = dashboardService.getNodePerformance(
                 workflowId, startDate, endDate);
         return ResponseEntity.ok(nodePerformance);
-    }
-
-    @GetMapping("/channels")
-    @Operation(summary = "Get channel performance", description = "Get performance metrics for each channel used in the workflow")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Channel performance retrieved successfully",
-                    content = @Content(schema = @Schema(implementation = WorkflowChannelPerformanceDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Workflow not found")
-    })
-    public ResponseEntity<List<WorkflowChannelPerformanceDTO>> getChannelPerformance(
-            @Parameter(description = "Workflow ID", required = true) @PathVariable String workflowId,
-            @Parameter(description = "Start date (ISO 8601, optional)") 
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-            @Parameter(description = "End date (ISO 8601, optional)") 
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
-        List<WorkflowChannelPerformanceDTO> channelPerformance = dashboardService.getChannelPerformance(
-                workflowId, startDate, endDate);
-        return ResponseEntity.ok(channelPerformance);
     }
 
     @GetMapping("/executions")

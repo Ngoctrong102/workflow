@@ -25,8 +25,6 @@ public class NodeExecutorRegistry {
 
     @PostConstruct
     public void init() {
-        NodeExecutor triggerExecutor = null;
-        
         for (NodeExecutor executor : executors) {
             NodeType nodeType = executor.getNodeType();
             if (executorMap.containsKey(nodeType)) {
@@ -36,30 +34,11 @@ public class NodeExecutorRegistry {
             executorMap.put(nodeType, executor);
             log.debug("Registered node executor: {} for node type: {}", 
                     executor.getClass().getSimpleName(), nodeType);
-            
-            // Remember TriggerNodeExecutor for fallback registration
-            if (nodeType == NodeType.TRIGGER) {
-                triggerExecutor = executor;
-            }
         }
         
-        // Register TriggerNodeExecutor for all trigger types as fallback
-        if (triggerExecutor != null) {
-            NodeType[] triggerTypes = {
-                NodeType.API_TRIGGER,
-                NodeType.SCHEDULE_TRIGGER,
-                NodeType.FILE_TRIGGER,
-                NodeType.EVENT_TRIGGER
-            };
-            
-            for (NodeType triggerType : triggerTypes) {
-                // Only register if no specific executor exists for this trigger type
-                if (!executorMap.containsKey(triggerType)) {
-                    executorMap.put(triggerType, triggerExecutor);
-                    log.debug("Registered TriggerNodeExecutor as fallback for trigger type: {}", triggerType);
-                }
-            }
-        }
+        // All trigger subtypes (api-call, scheduler, event) use TRIGGER node type
+        // Subtype is stored in node.data.config.subtype or node.data.config.registryId
+        // No need to register separate executors for trigger subtypes
         
         log.info("Initialized NodeExecutorRegistry with {} executors", executorMap.size());
     }

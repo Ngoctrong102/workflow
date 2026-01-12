@@ -73,19 +73,11 @@ export function detectFieldReferences(workflow: WorkflowDefinition): Array<{
         }
         break
 
-      case "map":
-        if (config.mapping && typeof config.mapping === "object") {
-          Object.entries(config.mapping).forEach(([key, value]) => {
-            if (typeof value === "string") {
-              oldFormatFields.push({
-                nodeId: node.id,
-                nodeType: node.type,
-                fieldName: `mapping.${key}`,
-                fieldValue: value,
-              })
-            }
-          })
-        }
+      // "map" is no longer a valid node type - removed
+      // Action nodes use "ACTION" and are identified by registryId
+      case "ACTION":
+        // Action nodes are identified by registryId
+        // Field references in action config are handled separately
         break
 
       case "filter":
@@ -265,27 +257,31 @@ export function bulkMigrateWorkflow(
         }
         break
 
-      case "map":
-        if (config.mapping && typeof config.mapping === "object") {
-          const migratedMapping: Record<string, FieldReference | string> = {}
-          let mappingMigrated = false
+      // "map" is no longer a valid node type - removed
+      // Action nodes use "ACTION" and are identified by registryId
+      case "ACTION":
+        // Action nodes are identified by registryId
+        // Field references in action config are migrated separately
+        if (config.configValues && typeof config.configValues === "object") {
+          const migratedConfigValues: Record<string, FieldReference | string> = {}
+          let configMigrated = false
 
-          Object.entries(config.mapping).forEach(([key, value]) => {
+          Object.entries(config.configValues).forEach(([key, value]) => {
             if (typeof value === "string") {
               const objectTypeId = objectTypeMapping.get(value)
               if (objectTypeId) {
-                migratedMapping[key] = migrateFieldReference(value, objectTypeId)
-                mappingMigrated = true
+                migratedConfigValues[key] = migrateFieldReference(value, objectTypeId)
+                configMigrated = true
               } else {
-                migratedMapping[key] = value
+                migratedConfigValues[key] = value
               }
             } else {
-              migratedMapping[key] = value
+              migratedConfigValues[key] = value
             }
           })
 
-          if (mappingMigrated) {
-            config.mapping = migratedMapping
+          if (configMigrated) {
+            config.configValues = migratedConfigValues
             nodeMigrated = true
           }
         }

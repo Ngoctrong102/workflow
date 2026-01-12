@@ -116,14 +116,14 @@ A new workflow node type that handles async event aggregation.
       "url": "https://external-service.com/api/action",
       "method": "POST",
       "headers": {
-        "Authorization": "Bearer {{token}}",
+        "Authorization": "Bearer @{_vars.token}",
         "Content-Type": "application/json"
       },
       "body": {
-        "action": "{{action}}",
-        "data": "{{data}}",
-        "execution_id": "{{_execution_id}}",  // Include execution ID for correlation
-        "correlation_id": "{{_correlation_id}}"  // Auto-injected correlation ID
+        "action": "@{_trigger.action}",
+        "data": "@{_trigger.data}",
+        "execution_id": "@{_execution.id}",  // Include execution ID for correlation
+        "correlation_id": "@{_execution.correlationId}"  // Auto-injected correlation ID
       },
       "correlationIdField": "correlation_id",  // Field name in request body
       "correlationIdHeader": "X-Correlation-Id",  // Optional: header name

@@ -144,7 +144,7 @@ Sử dụng node type mới **"Wait for Events"** với các tính năng:
       "method": "POST",
       "body": {
         "action": "process",
-        "data": "{{input_data}}"
+        "data": "@{_trigger.input_data}"
         // execution_id và correlation_id tự động inject
       },
       "required": true

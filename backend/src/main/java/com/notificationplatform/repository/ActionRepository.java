@@ -28,17 +28,9 @@ public interface ActionRepository extends JpaRepository<Action, String> {
     @Query("SELECT a FROM Action a WHERE a.type = :type AND a.deletedAt IS NULL")
     List<Action> findByType(@Param("type") ActionType type);
 
-    // Find by action type (excluding soft deleted)
-    @Query("SELECT a FROM Action a WHERE a.actionType = :actionType AND a.deletedAt IS NULL")
-    List<Action> findByActionType(@Param("actionType") String actionType);
-
     // Find by type and enabled (excluding soft deleted)
     @Query("SELECT a FROM Action a WHERE a.type = :type AND a.enabled = true AND a.deletedAt IS NULL")
     List<Action> findByTypeAndEnabled(@Param("type") ActionType type);
-
-    // Find by action type and enabled (excluding soft deleted)
-    @Query("SELECT a FROM Action a WHERE a.actionType = :actionType AND a.enabled = true AND a.deletedAt IS NULL")
-    List<Action> findByActionTypeAndEnabled(@Param("actionType") String actionType);
 
     // Find by ID and not soft deleted
     @Query("SELECT a FROM Action a WHERE a.id = :id AND a.deletedAt IS NULL")

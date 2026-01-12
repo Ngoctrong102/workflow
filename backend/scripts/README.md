@@ -178,5 +178,5 @@ Backend sử dụng Spring Boot DevTools để tự động reload khi code thay
 **Lưu ý:**
 - Hot reload hoạt động tốt nhất với các thay đổi trong code Java
 - Một số thay đổi (như thay đổi cấu hình application.yml) có thể cần restart
-- Thay đổi trong database migrations cần restart để Flyway chạy lại
+- Thay đổi trong database schema (JPA entities) sẽ được tự động cập nhật khi restart với `ddl-auto=update`
 

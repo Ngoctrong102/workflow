@@ -81,14 +81,28 @@ public class ActionRegistryServiceImpl implements ActionRegistryService {
         Action existing = actionRepository.findByIdAndNotDeleted(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Action not found with id: " + id));
 
-        // Update fields
-        existing.setName(updatedAction.getName());
-        existing.setType(updatedAction.getType());
-        existing.setActionType(updatedAction.getActionType());
-        existing.setDescription(updatedAction.getDescription());
-        existing.setConfigTemplate(updatedAction.getConfigTemplate());
-        existing.setMetadata(updatedAction.getMetadata());
-        existing.setVersion(updatedAction.getVersion());
+        // Update only non-null fields (partial update)
+        if (updatedAction.getName() != null) {
+            existing.setName(updatedAction.getName());
+        }
+        if (updatedAction.getType() != null) {
+            existing.setType(updatedAction.getType());
+        }
+        if (updatedAction.getDescription() != null) {
+            existing.setDescription(updatedAction.getDescription());
+        }
+        if (updatedAction.getConfigTemplate() != null) {
+            existing.setConfigTemplate(updatedAction.getConfigTemplate());
+        }
+        if (updatedAction.getMetadata() != null) {
+            existing.setMetadata(updatedAction.getMetadata());
+        }
+        if (updatedAction.getVersion() != null) {
+            existing.setVersion(updatedAction.getVersion());
+        }
+        if (updatedAction.getEnabled() != null) {
+            existing.setEnabled(updatedAction.getEnabled());
+        }
         existing.setUpdatedAt(LocalDateTime.now());
 
         Action saved = actionRepository.save(existing);
@@ -126,6 +140,23 @@ public class ActionRegistryServiceImpl implements ActionRegistryService {
         Action saved = actionRepository.save(action);
         log.info("Successfully disabled action: {}", saved.getId());
         return saved;
+    }
+
+    @Override
+    @Transactional
+    public void deleteAction(String id) {
+        log.info("Deleting action: {}", id);
+        
+        Action action = actionRepository.findByIdAndNotDeleted(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Action not found with id: " + id));
+
+        // Soft delete
+        action.setDeletedAt(LocalDateTime.now());
+        action.setEnabled(false);
+        action.setUpdatedAt(LocalDateTime.now());
+        
+        actionRepository.save(action);
+        log.info("Successfully deleted action: {}", id);
     }
 }
 

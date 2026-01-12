@@ -2,10 +2,11 @@ package com.notificationplatform.engine.nodes;
 
 import com.notificationplatform.engine.ExecutionContext;
 import com.notificationplatform.engine.NodeExecutionResult;
-import com.notificationplatform.engine.NodeExecutor;
-import com.notificationplatform.entity.enums.NodeType;
+import com.notificationplatform.entity.Action;
+import com.notificationplatform.exception.ResourceNotFoundException;
 import com.notificationplatform.service.registry.ActionRegistryService;
-import com.notificationplatform.service.template.TemplateRenderer;
+import com.notificationplatform.service.workflow.ExecutionContextBuilder;
+import com.notificationplatform.util.MvelEvaluator;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,15 +21,16 @@ import java.util.Map;
  * Executor for API Call Action node.
  * Makes HTTP requests to external APIs with retry support.
  * 
+ * This executor is called by ActionNodeExecutor for API_CALL action type.
+ * 
  * See: @import(features/node-types.md#api-call-action)
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class ApiCallNodeExecutor implements NodeExecutor {
+public class ApiCallNodeExecutor implements ActionExecutor {
 
     private final RestTemplate restTemplate;
-    private final TemplateRenderer templateRenderer;
     private final ActionRegistryService actionRegistryService;
 
     @Override
@@ -42,24 +44,40 @@ public class ApiCallNodeExecutor implements NodeExecutor {
                 throw new IllegalArgumentException("Registry ID is required for API call action");
             }
             
+            Action action;
             try {
-                actionRegistryService.getActionById(registryId);
-            } catch (com.notificationplatform.exception.ResourceNotFoundException e) {
+                action = actionRegistryService.getActionById(registryId);
+            } catch (ResourceNotFoundException e) {
                 throw new IllegalArgumentException("Action not found in registry: " + registryId);
             }
             
-            // Parse node configuration
-            ApiCallConfig config = parseConfig(nodeData, context);
+            // Get config values (new structure) or parse from nodeData (backward compatibility)
+            Map<String, Object> configValues = getConfigValues(nodeData);
+            
+            // Build MVEL execution context
+            Map<String, Object> mvelContext = ExecutionContextBuilder.buildContext(context);
+            
+            // Evaluate MVEL expressions in config values
+            Map<String, Object> resolvedConfig = (Map<String, Object>) 
+                MvelEvaluator.evaluateObject(configValues, mvelContext);
+            
+            // Parse resolved config to ApiCallConfig
+            ApiCallConfig config = parseResolvedConfig(resolvedConfig);
             
             // Make HTTP request with retry
             ResponseEntity<Map<String, Object>> response = executeApiCall(config);
             
-            // Build output
-            Map<String, Object> output = new HashMap<>();
-            output.put("statusCode", response.getStatusCode().value());
-            output.put("status", response.getStatusCode().is2xxSuccessful() ? "success" : "error");
-            output.put("headers", response.getHeaders().toSingleValueMap());
-            output.put("body", response.getBody());
+            // Build raw response
+            Map<String, Object> rawResponse = new HashMap<>();
+            rawResponse.put("statusCode", response.getStatusCode().value());
+            rawResponse.put("headers", response.getHeaders().toSingleValueMap());
+            rawResponse.put("body", response.getBody());
+            
+            // Build output context for output mapping
+            Map<String, Object> outputContext = ExecutionContextBuilder.buildOutputContext(context, rawResponse);
+            
+            // Apply output mapping (if available from action registry or node config)
+            Map<String, Object> output = applyOutputMapping(action, nodeData, outputContext, rawResponse);
             
             return new NodeExecutionResult(true, output);
             
@@ -117,77 +135,154 @@ public class ApiCallNodeExecutor implements NodeExecutor {
     }
 
     /**
-     * Parse API call configuration from node data.
+     * Get config values from node data.
+     * Supports both new structure (config.configValues) and old structure (direct fields).
      */
     @SuppressWarnings("unchecked")
-    private ApiCallConfig parseConfig(Map<String, Object> nodeData, ExecutionContext context) {
+    private Map<String, Object> getConfigValues(Map<String, Object> nodeData) {
+        // Try new structure first: nodeData.config.configValues
+        Object configObj = nodeData.get("config");
+        if (configObj instanceof Map) {
+            Map<String, Object> config = (Map<String, Object>) configObj;
+            Object configValuesObj = config.get("configValues");
+            if (configValuesObj instanceof Map) {
+                return new HashMap<>((Map<String, Object>) configValuesObj);
+            }
+        }
+        
+        // Fallback to old structure: direct fields in nodeData
+        Map<String, Object> configValues = new HashMap<>();
+        if (nodeData.containsKey("url")) {
+            configValues.put("url", nodeData.get("url"));
+        }
+        if (nodeData.containsKey("method")) {
+            configValues.put("method", nodeData.get("method"));
+        } else {
+            configValues.put("method", "GET");
+        }
+        if (nodeData.containsKey("headers")) {
+            configValues.put("headers", nodeData.get("headers"));
+        }
+        if (nodeData.containsKey("body")) {
+            configValues.put("body", nodeData.get("body"));
+        }
+        if (nodeData.containsKey("authentication")) {
+            configValues.put("authentication", nodeData.get("authentication"));
+        }
+        if (nodeData.containsKey("timeout")) {
+            configValues.put("timeout", nodeData.get("timeout"));
+        }
+        if (nodeData.containsKey("retry")) {
+            configValues.put("retry", nodeData.get("retry"));
+        }
+        
+        return configValues;
+    }
+    
+    /**
+     * Parse resolved config (after MVEL evaluation) to ApiCallConfig.
+     */
+    @SuppressWarnings("unchecked")
+    private ApiCallConfig parseResolvedConfig(Map<String, Object> resolvedConfig) {
         ApiCallConfig config = new ApiCallConfig();
         
-        // Get variables from context for template rendering
-        Map<String, Object> variables = context.getDataForNode((String) nodeData.get("nodeId"));
-        
         // Parse URL
-        String url = (String) nodeData.get("url");
-        if (url != null && url.contains("${")) {
-            url = templateRenderer.render(url, variables);
+        Object urlObj = resolvedConfig.get("url");
+        if (urlObj != null) {
+            config.setUrl(urlObj.toString());
         }
-        config.setUrl(url);
         
         // Parse method
-        String method = (String) nodeData.getOrDefault("method", "GET");
-        config.setMethod(method);
+        Object methodObj = resolvedConfig.get("method");
+        if (methodObj != null) {
+            config.setMethod(methodObj.toString());
+        } else {
+            config.setMethod("GET");
+        }
         
         // Parse headers
-        Map<String, Object> headersObj = (Map<String, Object>) nodeData.get("headers");
-        if (headersObj != null) {
+        Object headersObj = resolvedConfig.get("headers");
+        if (headersObj instanceof Map) {
+            Map<String, Object> headersMap = (Map<String, Object>) headersObj;
             Map<String, String> headers = new HashMap<>();
-            headersObj.forEach((key, value) -> {
-                String headerValue = value != null ? value.toString() : "";
-                if (headerValue.contains("${")) {
-                    headerValue = templateRenderer.render(headerValue, variables);
-                }
-                headers.put(key, headerValue);
+            headersMap.forEach((key, value) -> {
+                headers.put(key, value != null ? value.toString() : "");
             });
             config.setHeaders(headers);
         }
         
         // Parse body
-        Object body = nodeData.get("body");
-        if (body instanceof String && ((String) body).contains("${")) {
-            body = templateRenderer.render((String) body, variables);
-        } else if (body instanceof Map) {
-            // Render nested values in body
-            body = renderBodyTemplate((Map<String, Object>) body, variables);
-        }
+        Object body = resolvedConfig.get("body");
         config.setBody(body);
         
         // Parse authentication
-        @SuppressWarnings("unchecked")
-        Map<String, Object> auth = (Map<String, Object>) nodeData.get("authentication");
-        if (auth != null) {
-            config.setAuthentication(auth);
+        Object authObj = resolvedConfig.get("authentication");
+        if (authObj instanceof Map) {
+            config.setAuthentication((Map<String, Object>) authObj);
         }
         
         return config;
     }
-
+    
     /**
-     * Render body template recursively.
+     * Apply output mapping to raw response.
+     * Uses output mapping from action registry or node config (if provided).
      */
     @SuppressWarnings("unchecked")
-    private Map<String, Object> renderBodyTemplate(Map<String, Object> body, Map<String, Object> variables) {
-        Map<String, Object> rendered = new HashMap<>();
-        body.forEach((key, value) -> {
-            if (value instanceof String && ((String) value).contains("${")) {
-                rendered.put(key, templateRenderer.render((String) value, variables));
-            } else if (value instanceof Map) {
-                rendered.put(key, renderBodyTemplate((Map<String, Object>) value, variables));
-            } else {
-                rendered.put(key, value);
+    private Map<String, Object> applyOutputMapping(
+            Action action, 
+            Map<String, Object> nodeData, 
+            Map<String, Object> outputContext,
+            Map<String, Object> rawResponse) {
+        
+        // Get output mapping from node config (if provided) or action registry
+        Map<String, String> outputMapping = null;
+        
+        // Try node config first (custom override)
+        Object configObj = nodeData.get("config");
+        if (configObj instanceof Map) {
+            Map<String, Object> config = (Map<String, Object>) configObj;
+            Object outputMappingObj = config.get("outputMapping");
+            if (outputMappingObj instanceof Map) {
+                outputMapping = (Map<String, String>) outputMappingObj;
             }
-        });
-        return rendered;
+        }
+        
+        // Fallback to action registry output mapping
+        if (outputMapping == null && action.getConfigTemplate() != null) {
+            Object outputMappingObj = action.getConfigTemplate().get("outputMapping");
+            if (outputMappingObj instanceof Map) {
+                outputMapping = (Map<String, String>) outputMappingObj;
+            }
+        }
+        
+        // If no output mapping, return raw response with status
+        if (outputMapping == null || outputMapping.isEmpty()) {
+            Map<String, Object> output = new HashMap<>(rawResponse);
+            Integer statusCode = (Integer) rawResponse.get("statusCode");
+            output.put("status", statusCode != null && statusCode >= 200 && statusCode < 300 ? "success" : "error");
+            return output;
+        }
+        
+        // Apply output mapping with MVEL evaluation
+        Map<String, Object> mappedOutput = new HashMap<>();
+        for (Map.Entry<String, String> entry : outputMapping.entrySet()) {
+            String fieldName = entry.getKey();
+            String mvelExpression = entry.getValue();
+            
+            try {
+                Object value = MvelEvaluator.evaluateExpression(mvelExpression, outputContext);
+                mappedOutput.put(fieldName, value);
+            } catch (Exception e) {
+                log.warn("Failed to evaluate output mapping for field '{}': {}", fieldName, e.getMessage());
+                // Use raw response value if available
+                mappedOutput.put(fieldName, rawResponse.get(fieldName));
+            }
+        }
+        
+        return mappedOutput;
     }
+
 
     /**
      * API Call configuration.
@@ -240,9 +335,5 @@ public class ApiCallNodeExecutor implements NodeExecutor {
         }
     }
 
-    @Override
-    public NodeType getNodeType() {
-        return NodeType.ACTION;
-    }
 }
 

@@ -7,25 +7,20 @@ import { LazyPage } from "@/components/common/LazyPage"
 const Dashboard = lazy(() => import("@/pages/Dashboard").then((module) => ({ default: module.default })))
 const WorkflowList = lazy(() => import("@/pages/WorkflowList").then((module) => ({ default: module.default })))
 const WorkflowBuilder = lazy(() => import("@/pages/WorkflowBuilder").then((module) => ({ default: module.default })))
-const TemplateList = lazy(() => import("@/pages/TemplateList").then((module) => ({ default: module.default })))
-const TemplateEditor = lazy(() => import("@/pages/TemplateEditor").then((module) => ({ default: module.default })))
-const ChannelList = lazy(() => import("@/pages/ChannelList").then((module) => ({ default: module.default })))
-const ChannelEditor = lazy(() => import("@/pages/ChannelEditor").then((module) => ({ default: module.default })))
 const Analytics = lazy(() => import("@/pages/Analytics").then((module) => ({ default: module.default })))
 const ExecutionList = lazy(() => import("@/pages/ExecutionList").then((module) => ({ default: module.default })))
 const ExecutionDetails = lazy(() => import("@/pages/ExecutionDetails").then((module) => ({ default: module.default })))
 const ABTestList = lazy(() => import("@/pages/ABTestList").then((module) => ({ default: module.default })))
 const ABTestEditor = lazy(() => import("@/pages/ABTestEditor").then((module) => ({ default: module.default })))
-const TemplateLibrary = lazy(() => import("@/pages/TemplateLibrary").then((module) => ({ default: module.default })))
 const WorkflowWizard = lazy(() => import("@/pages/WorkflowWizard").then((module) => ({ default: module.default })))
 const WorkflowDashboard = lazy(() => import("@/pages/WorkflowDashboard").then((module) => ({ default: module.default })))
 const WorkflowReportConfig = lazy(() => import("@/pages/WorkflowReportConfig").then((module) => ({ default: module.default })))
 const WorkflowReportSettings = lazy(() => import("@/pages/WorkflowReportSettings").then((module) => ({ default: module.default })))
-const ObjectTypeList = lazy(() => import("@/pages/ObjectTypeList").then((module) => ({ default: module.default })))
-const ObjectTypeEditor = lazy(() => import("@/pages/ObjectTypeEditor").then((module) => ({ default: module.default })))
 const ExecutionVisualization = lazy(() => import("@/pages/ExecutionVisualization").then((module) => ({ default: module.default })))
 const TriggerList = lazy(() => import("@/pages/TriggerList").then((module) => ({ default: module.default })))
 const TriggerEditor = lazy(() => import("@/pages/TriggerEditor").then((module) => ({ default: module.default })))
+const TriggerRegistryList = lazy(() => import("@/pages/TriggerRegistryList").then((module) => ({ default: module.default })))
+const TriggerRegistryEditor = lazy(() => import("@/pages/TriggerRegistryEditor").then((module) => ({ default: module.default })))
 const ActionList = lazy(() => import("@/pages/ActionList").then((module) => ({ default: module.default })))
 const ActionEditor = lazy(() => import("@/pages/ActionEditor").then((module) => ({ default: module.default })))
 
@@ -75,40 +70,6 @@ export const router = createBrowserRouter([
           },
         ],
       },
-      {
-        path: "templates",
-        children: [
-          {
-            index: true,
-            element: <LazyPage component={TemplateList} />,
-          },
-          {
-            path: "new",
-            element: <LazyPage component={TemplateEditor} />,
-          },
-          {
-            path: ":id",
-            element: <LazyPage component={TemplateEditor} />,
-          },
-        ],
-      },
-      {
-        path: "channels",
-        children: [
-          {
-            index: true,
-            element: <LazyPage component={ChannelList} />,
-          },
-          {
-            path: "new",
-            element: <LazyPage component={ChannelEditor} />,
-          },
-          {
-            path: ":id",
-            element: <LazyPage component={ChannelEditor} />,
-          },
-        ],
-      },
             {
               path: "analytics",
               element: <LazyPage component={Analytics} />,
@@ -148,29 +109,8 @@ export const router = createBrowserRouter([
               ],
             },
             {
-              path: "template-library",
-              element: <LazyPage component={TemplateLibrary} />,
-            },
-            {
               path: "workflows/wizard",
               element: <LazyPage component={WorkflowWizard} />,
-            },
-            {
-              path: "object-types",
-              children: [
-                {
-                  index: true,
-                  element: <LazyPage component={ObjectTypeList} />,
-                },
-                {
-                  path: "new",
-                  element: <LazyPage component={ObjectTypeEditor} />,
-                },
-                {
-                  path: ":id",
-                  element: <LazyPage component={ObjectTypeEditor} />,
-                },
-              ],
             },
             {
               path: "triggers",
@@ -198,6 +138,23 @@ export const router = createBrowserRouter([
                 {
                   path: "workflow/:workflowId/new/:type",
                   element: <LazyPage component={TriggerEditor} />,
+                },
+              ],
+            },
+            {
+              path: "trigger-registry",
+              children: [
+                {
+                  index: true,
+                  element: <LazyPage component={TriggerRegistryList} />,
+                },
+                {
+                  path: "new",
+                  element: <LazyPage component={TriggerRegistryEditor} />,
+                },
+                {
+                  path: ":id",
+                  element: <LazyPage component={TriggerRegistryEditor} />,
                 },
               ],
             },

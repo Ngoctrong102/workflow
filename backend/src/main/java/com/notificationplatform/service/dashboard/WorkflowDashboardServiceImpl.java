@@ -2,24 +2,18 @@ package com.notificationplatform.service.dashboard;
 
 import com.notificationplatform.dto.response.ExecutionStatusResponse;
 import com.notificationplatform.dto.response.PagedResponse;
-import com.notificationplatform.dto.response.WorkflowChannelPerformanceDTO;
 import com.notificationplatform.dto.response.WorkflowDashboardDTO;
 import com.notificationplatform.dto.response.WorkflowDashboardMetricsDTO;
 import com.notificationplatform.dto.response.WorkflowErrorAnalysisDTO;
 import com.notificationplatform.dto.response.WorkflowExecutionTrendDTO;
 import com.notificationplatform.dto.response.WorkflowNodePerformanceDTO;
-import com.notificationplatform.entity.Channel;
-import com.notificationplatform.entity.Delivery;
 import com.notificationplatform.entity.Execution;
 import com.notificationplatform.entity.NodeExecution;
 import com.notificationplatform.entity.Workflow;
 import com.notificationplatform.entity.enums.ExecutionStatus;
 import com.notificationplatform.exception.ResourceNotFoundException;
-import com.notificationplatform.repository.ChannelRepository;
-import com.notificationplatform.repository.DeliveryRepository;
 import com.notificationplatform.repository.ExecutionRepository;
 import com.notificationplatform.repository.NodeExecutionRepository;
-import com.notificationplatform.repository.NotificationRepository;
 import com.notificationplatform.repository.WorkflowRepository;
 
 
@@ -43,22 +37,13 @@ public class WorkflowDashboardServiceImpl implements WorkflowDashboardService {
     private final WorkflowRepository workflowRepository;
     private final ExecutionRepository executionRepository;
     private final NodeExecutionRepository nodeExecutionRepository;
-    private final NotificationRepository notificationRepository;
-    private final DeliveryRepository deliveryRepository;
-    private final ChannelRepository channelRepository;
 
     public WorkflowDashboardServiceImpl(WorkflowRepository workflowRepository,
-                                       ExecutionRepository executionRepository,
-                                       NodeExecutionRepository nodeExecutionRepository,
-                                       NotificationRepository notificationRepository,
-                                       DeliveryRepository deliveryRepository,
-                                       ChannelRepository channelRepository) {
+                                      ExecutionRepository executionRepository,
+                                      NodeExecutionRepository nodeExecutionRepository) {
         this.workflowRepository = workflowRepository;
         this.executionRepository = executionRepository;
         this.nodeExecutionRepository = nodeExecutionRepository;
-        this.notificationRepository = notificationRepository;
-        this.deliveryRepository = deliveryRepository;
-        this.channelRepository = channelRepository;
     }
 
     @Override
@@ -104,11 +89,6 @@ public class WorkflowDashboardServiceImpl implements WorkflowDashboardService {
 
         double successRate = totalExecutions > 0 ? (double) successfulExecutions / totalExecutions * 100 : 0.0;
         double errorRate = totalExecutions > 0 ? (double) failedExecutions / totalExecutions * 100 : 0.0;
-
-        // Get notification metrics
-        long totalNotificationsSent = notificationRepository.countByWorkflowIdAndDateRange(workflowId, startUtc, endUtc);
-        long totalNotificationsDelivered = deliveryRepository.countDeliveredByWorkflowId(workflowId, startUtc, endUtc);
-        double deliveryRate = totalNotificationsSent > 0 ? (double) totalNotificationsDelivered / totalNotificationsSent * 100 : 0.0;
 
         // Group executions by status (convert enum to string)
         Map<String, Long> executionsByStatus = executions.stream()
@@ -159,19 +139,12 @@ public class WorkflowDashboardServiceImpl implements WorkflowDashboardService {
         if (previousAverageExecutionTime == null) {
             previousAverageExecutionTime = 0.0;
         }
-        long previousNotificationsSent = notificationRepository.countByWorkflowIdAndDateRange(
-                workflowId, previousStartUtc, previousEndUtc);
-        long previousNotificationsDelivered = deliveryRepository.countDeliveredByWorkflowId(
-                workflowId, previousStartUtc, previousEndUtc);
-        double previousDeliveryRate = previousNotificationsSent > 0 ?
-                (double) previousNotificationsDelivered / previousNotificationsSent * 100 : 0.0;
 
         WorkflowDashboardMetricsDTO.TrendComparison trendComparison = new WorkflowDashboardMetricsDTO.TrendComparison();
         trendComparison.setExecutionCountChange(calculatePercentageChange(totalExecutions, previousTotalExecutions));
         trendComparison.setSuccessRateChange(calculatePercentageChange(successRate,
                 previousTotalExecutions > 0 ? (double) previousSuccessfulExecutions / previousTotalExecutions * 100 : 0.0));
         trendComparison.setAverageExecutionTimeChange(calculatePercentageChange(averageExecutionTime, previousAverageExecutionTime));
-        trendComparison.setDeliveryRateChange(calculatePercentageChange(deliveryRate, previousDeliveryRate));
 
         // Build metrics DTO
         WorkflowDashboardMetricsDTO metrics = new WorkflowDashboardMetricsDTO();
@@ -182,9 +155,6 @@ public class WorkflowDashboardServiceImpl implements WorkflowDashboardService {
         metrics.setSuccessRate(successRate);
         metrics.setErrorRate(errorRate);
         metrics.setAverageExecutionTime(averageExecutionTime);
-        metrics.setTotalNotificationsSent(totalNotificationsSent);
-        metrics.setTotalNotificationsDelivered(totalNotificationsDelivered);
-        metrics.setDeliveryRate(deliveryRate);
         metrics.setExecutionsByStatus(executionsByStatus);
         metrics.setExecutionsByTriggerType(executionsByTriggerType);
         metrics.setFirstExecutionAt(firstExecutionAt);
@@ -364,77 +334,6 @@ public class WorkflowDashboardServiceImpl implements WorkflowDashboardService {
         }
 
         return nodePerformanceList;
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    @Cacheable(value = "workflowChannelPerformance", key = "#workflowId + '_' + #startDate + '_' + #endDate", unless = "#result == null")
-    public List<WorkflowChannelPerformanceDTO> getChannelPerformance(String workflowId, LocalDateTime startDate,
-                                                                     LocalDateTime endDate) {
-        log.debug("Getting channel performance for workflow: {}", workflowId);
-
-        Workflow workflow = workflowRepository.findByIdAndNotDeleted(workflowId)
-                .orElseThrow(() -> new ResourceNotFoundException("Workflow not found with id: " + workflowId));
-
-        if (startDate == null) {
-            startDate = LocalDateTime.now().minusDays(30);
-        }
-        if (endDate == null) {
-            endDate = LocalDateTime.now();
-        }
-
-        // Get delivery metrics by channel
-        List<Object[]> deliveryMetrics = deliveryRepository.getDeliveryMetricsByChannel(workflowId, startDate, endDate);
-
-        // Get deliveries for average delivery time calculation
-        List<Delivery> deliveries = deliveryRepository.getDeliveriesForAverageTime(
-                workflowId, startDate, endDate);
-
-        // Group deliveries by channel for average time calculation
-        Map<String, List<Delivery>> deliveriesByChannel = deliveries.stream()
-                .collect(Collectors.groupingBy(Delivery::getChannel));
-
-        // Build channel performance DTOs
-        List<WorkflowChannelPerformanceDTO> channelPerformanceList = new ArrayList<>();
-        for (Object[] row : deliveryMetrics) {
-            String channelId = (String) row[0];
-            Long notificationsSent = ((Number) row[1]).longValue();
-            Long notificationsDelivered = ((Number) row[2]).longValue();
-            Long notificationsFailed = ((Number) row[3]).longValue();
-
-            // Calculate average delivery time
-            List<Delivery> channelDeliveries = deliveriesByChannel.getOrDefault(channelId, new ArrayList<>());
-            double averageDeliveryTime = channelDeliveries.stream()
-                    .filter(d -> d.getDeliveredAt() != null && d.getCreatedAt() != null)
-                    .mapToLong(d -> {
-                        long millis = java.time.Duration.between(d.getCreatedAt(), d.getDeliveredAt()).toMillis();
-                        return millis;
-                    })
-                    .average()
-                    .orElse(0.0);
-
-            double deliveryRate = notificationsSent > 0 ? (double) notificationsDelivered / notificationsSent * 100 : 0.0;
-
-            // Get channel details
-            Channel channel = channelId != null ? channelRepository.findById(channelId).orElse(null) : null;
-            String channelType = channel != null ? channel.getType() : channelId;
-            String channelName = channel != null ? channel.getName() : channelId;
-
-            WorkflowChannelPerformanceDTO channelPerformance = new WorkflowChannelPerformanceDTO();
-            channelPerformance.setChannelId(channelId);
-            channelPerformance.setChannelType(channelType);
-            channelPerformance.setChannelName(channelName);
-            channelPerformance.setNotificationsSent(notificationsSent);
-            channelPerformance.setNotificationsDelivered(notificationsDelivered);
-            channelPerformance.setNotificationsFailed(notificationsFailed);
-            channelPerformance.setDeliveryRate(deliveryRate);
-            channelPerformance.setAverageDeliveryTime(averageDeliveryTime);
-            channelPerformance.setTotalErrors(notificationsFailed);
-
-            channelPerformanceList.add(channelPerformance);
-        }
-
-        return channelPerformanceList;
     }
 
     @Override
@@ -720,7 +619,7 @@ public class WorkflowDashboardServiceImpl implements WorkflowDashboardService {
         return response;
     }
 
-    @CacheEvict(value = {"workflowDashboard", "workflowTrends", "workflowNodePerformance", "workflowChannelPerformance"},
+    @CacheEvict(value = {"workflowDashboard", "workflowTrends", "workflowNodePerformance"},
                 key = "#workflowId + '_*'")
     public void evictDashboardCache(String workflowId) {
         log.debug("Evicting dashboard cache for workflow: {}", workflowId);

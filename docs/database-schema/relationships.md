@@ -113,31 +113,31 @@ executions (1) ──< (N) node_executions
 
 ## Detailed Relationships
 
-### 1. Workflows → Triggers
-- **Relationship**: One-to-Many (Một-Nhiều)
-- **Foreign Key**: `triggers.workflow_id` → `workflows.id`
-- **Cascade**: ON DELETE CASCADE (Khi xóa workflow, tự động xóa các triggers)
+### 1. Workflows → Trigger Instances (via workflow definition)
+- **Relationship**: One-to-Many (Một-Nhiều) - Logic relationship through workflow definition
+- **Foreign Key**: None (trigger instances stored in `workflows.definition` JSONB)
 - **Description**: 
-  - Một workflow có thể có nhiều trigger configs (mỗi trigger node trong workflow có một config)
-  - Ví dụ: Workflow "Email Marketing" có thể có 2 triggers: một cho "API Call Trigger" và một cho "Scheduler Trigger"
-  - **Important**: Triggers chỉ là configuration, không tự động hoạt động. Chỉ hoạt động khi trigger node được thêm vào workflow definition và workflow được activate.
+  - Một workflow có thể có nhiều trigger instances (mỗi trigger node trong workflow có một instance)
+  - Trigger instances được lưu trong `workflows.definition` node data, không có bảng riêng
+  - Ví dụ: Workflow "Email Marketing" có thể có 2 trigger instances: một cho "API Call Trigger Config" và một cho "Scheduler Trigger Config"
+  - **Important**: Trigger instances reference trigger configs via `triggerConfigId`. Trigger configs là độc lập và có thể share giữa nhiều workflows.
 - **Business Logic**: 
-  - Khi user thêm trigger node vào workflow → tạo trigger config
-  - Khi user xóa trigger node → xóa trigger config (soft delete)
-  - Khi user xóa workflow → xóa tất cả triggers (cascade delete)
-  - Runtime state (ACTIVE, PAUSED, etc.) được quản lý riêng, không lưu trong bảng triggers
+  - Khi user thêm trigger node vào workflow → tạo trigger instance trong workflow definition
+  - Khi user xóa trigger node → xóa trigger instance từ workflow definition (không ảnh hưởng trigger config)
+  - Khi user xóa workflow → trigger instances bị xóa cùng workflow definition (nhưng trigger configs vẫn tồn tại)
+  - Runtime state (ACTIVE, PAUSED, etc.) được lưu trong workflow definition
 
-### 2. Triggers → Executions
-- **Relationship**: One-to-Many (Một-Nhiều)
-- **Foreign Key**: `executions.trigger_id` → `triggers.id`
+### 2. Trigger Configs → Executions
+- **Relationship**: One-to-Many (Một-Nhiều) - Logic relationship
+- **Foreign Key**: `executions.trigger_id` → `triggers.id` (reference to trigger config)
 - **Cascade**: None (Không cascade - giữ lại executions)
 - **Description**: 
-  - Một trigger config có thể khởi động nhiều executions
-  - Ví dụ: Scheduler trigger chạy mỗi ngày → tạo 365 executions trong một năm
+  - Một trigger config có thể khởi động nhiều executions (qua các trigger instances trong workflows)
+  - Ví dụ: Scheduler trigger config được dùng trong 3 workflows, mỗi workflow chạy mỗi ngày → tạo 1095 executions trong một năm (365 x 3)
 - **Business Logic**: 
-  - Khi trigger node trong workflow được kích hoạt → tạo execution mới
-  - Cho phép tracking: trigger nào đã tạo bao nhiêu executions
-  - Có thể phân tích hiệu suất của từng trigger
+  - Khi trigger instance trong workflow được kích hoạt → tạo execution mới với `trigger_id` reference đến trigger config
+  - Cho phép tracking: trigger config nào đã tạo bao nhiêu executions
+  - Có thể phân tích hiệu suất của từng trigger config
 
 ### 3. Actions → Node Executions
 - **Relationship**: One-to-Many (Một-Nhiều) - Quan hệ logic qua `registry_id`
@@ -233,9 +233,8 @@ All foreign key relationships enforce referential integrity:
 ### Soft Deletes
 Entities with `deleted_at` use soft deletes:
 - `workflows`
-- `trigger_definitions`
-- `action_definitions`
-- `trigger_instances`
+- `triggers` (trigger configs)
+- `actions` (action registry)
 
 Soft delete records are excluded from normal queries but preserved for:
 - Audit trails
@@ -260,11 +259,13 @@ graph LR
 
 **Quy trình thực thi:**
 
-1. **Trigger Node** kích hoạt → tạo **Execution**
-   - Trigger node trong workflow definition nhận event hoặc đến thời gian schedule
-   - System đọc trigger config từ bảng `triggers` dựa trên `node_id`
+1. **Trigger Instance** kích hoạt → tạo **Execution**
+   - Trigger instance trong workflow definition nhận event hoặc đến thời gian schedule
+   - System đọc trigger instance từ `workflows.definition` (có `triggerConfigId`)
+   - System load trigger config từ bảng `triggers` dựa trên `triggerConfigId`
+   - System merge trigger config với instance-specific overrides
    - Tạo record mới trong `executions` với status = RUNNING
-   - Lưu trigger_data vào execution
+   - Lưu trigger_data và trigger_id (reference đến trigger config) vào execution
 
 2. **Execution** xử lý → tạo **Node Executions**
    - Execution engine đọc workflow definition từ `workflows.definition`
@@ -299,7 +300,7 @@ graph TB
     end
     
     subgraph "Soft Deleted - Preserved for Audit"
-        SOFT_DEL[Soft Deleted Records<br/>workflows, trigger_definitions,<br/>action_definitions, trigger_instances]
+        SOFT_DEL[Soft Deleted Records<br/>workflows, triggers, actions]
     end
     
     subgraph "Report History - 3 Months"
@@ -331,7 +332,7 @@ graph TB
    - Hỗ trợ báo cáo và phân tích xu hướng dài hạn
 
 3. **Soft Deleted Records (Bản ghi đã xóa mềm) - Giữ lại vĩnh viễn**
-   - `workflows`, `triggers`, `actions`
+   - `workflows`, `triggers` (trigger configs), `actions` (action registry)
    - Đánh dấu `deleted_at` thay vì xóa thật
    - Giữ lại cho audit trail, recovery, historical data
    - Không hiển thị trong queries bình thường (WHERE deleted_at IS NULL)
@@ -347,9 +348,9 @@ graph TB
 - `actions` → `node_executions` (1-N, logic): Action template → Node executions
 
 ### Workflow Layer (Lớp workflow)
-- `workflows` → `triggers` (1-N): Workflow có nhiều trigger configs
+- `workflows` → Trigger Instances (1-N, logic): Workflow có nhiều trigger instances (lưu trong workflow definition)
 - `workflows` → `workflow_reports` (1-1): Mỗi workflow có một report config
-- **Note**: Trigger nodes được lưu trong `workflows.definition` (JSONB), reference đến trigger config qua `node_id`
+- **Note**: Trigger instances được lưu trong `workflows.definition` (JSONB), reference đến trigger config qua `triggerConfigId`
 
 ### Execution Layer (Lớp thực thi)
 - `workflows` → `executions` (1-N): Workflow có nhiều executions

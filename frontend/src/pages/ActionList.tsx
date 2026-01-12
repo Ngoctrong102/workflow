@@ -6,8 +6,9 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Edit, Eye } from "lucide-react"
-import { useActionRegistry } from "@/hooks/use-action-registry"
+import { Plus, Search, Edit, Eye, Trash2, Loader2 } from "lucide-react"
+import { useActionRegistry, useDeleteActionRegistry } from "@/hooks/use-action-registry"
+import { useConfirmDialog } from "@/components/common/ConfirmDialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { ActionRegistryItem } from "@/services/action-registry-service"
 
@@ -16,14 +17,8 @@ const actionTypeLabels: Record<string, string> = {
   "publish-event": "Publish Event",
   "function": "Function",
   "custom-action": "Custom Action",
-  "send-email": "Send Email",
-  "send-sms": "Send SMS",
-  "send-push": "Send Push",
-  "send-in-app": "Send In-App",
-  "send-slack": "Send Slack",
-  "send-discord": "Send Discord",
-  "send-teams": "Send Teams",
-  "send-webhook": "Send Webhook",
+  // Removed all "send-*" action types - these are legacy types
+  // Custom actions should be registered in the action registry with custom-action type
 }
 
 export default function ActionListPage() {
@@ -33,6 +28,26 @@ export default function ActionListPage() {
 
   const { data: actionRegistry, isLoading } = useActionRegistry()
   const actions = actionRegistry?.actions || []
+  const deleteAction = useDeleteActionRegistry()
+  const { confirm } = useConfirmDialog()
+
+  const handleDelete = async (id: string, name: string) => {
+    const confirmed = await confirm({
+      title: "Delete Action Definition",
+      description: `Are you sure you want to delete "${name}"? This action cannot be undone and will affect all workflows using this action.`,
+      variant: "destructive",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+    })
+
+    if (confirmed) {
+      try {
+        await deleteAction.mutateAsync(id)
+      } catch (error) {
+        // Error handling is done in the mutation hook
+      }
+    }
+  }
 
   const filteredActions = actions.filter((action) => {
     const matchesSearch = searchQuery === "" || 
@@ -60,7 +75,7 @@ export default function ActionListPage() {
               <CardTitle>Action Registry</CardTitle>
               <CardDescription>View all available actions from the registry</CardDescription>
             </div>
-            <Button onClick={() => navigate("/actions/new")}>
+            <Button onClick={() => navigate("/actions/new")} className="cursor-pointer">
               <Plus className="h-4 w-4 mr-2" />
               Create Custom Action
             </Button>
@@ -123,7 +138,7 @@ export default function ActionListPage() {
                   {filteredActions.map((action) => (
                     <TableRow 
                       key={action.id} 
-                      className="cursor-pointer hover:bg-secondary-50"
+                      className="cursor-pointer hover:bg-secondary-50 transition-colors"
                       onClick={() => navigate(`/actions/${action.id}`)}
                     >
                       <TableCell>
@@ -166,16 +181,32 @@ export default function ActionListPage() {
                             size="sm"
                             onClick={() => navigate(`/actions/${action.id}`)}
                             title="View action details"
+                            className="cursor-pointer"
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => navigate(`/actions/${action.id}/edit`)}
+                            onClick={() => navigate(`/actions/${action.id}`)}
                             title="Edit action"
+                            className="cursor-pointer"
                           >
                             <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(action.id, action.name)}
+                            disabled={deleteAction.isPending}
+                            title="Delete action"
+                            className="cursor-pointer text-error-600 hover:text-error-700"
+                          >
+                            {deleteAction.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
                           </Button>
                         </div>
                       </TableCell>

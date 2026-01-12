@@ -19,6 +19,7 @@ This file provides a reference for the `@import()` system used to load documenta
 @import('docs/features/workflow-report.md')
 @import('docs/features/ab-testing.md')
 @import('docs/features/schema-definition.md')
+@import('docs/features/mvel-expression-system.md')
 ```
 
 ### API
@@ -62,6 +63,7 @@ This file provides a reference for the `@import()` system used to load documenta
 @import('docs/technical/frontend/implementation-guide.md')
 @import('docs/technical/frontend/api-integration.md')
 @import('docs/technical/frontend/state-management.md')
+@import('docs/technical/frontend/action-node-configuration.md')
 @import('docs/technical/frontend/development-guide.md')
 ```
 
@@ -72,6 +74,7 @@ This file provides a reference for the `@import()` system used to load documenta
 @import('docs/technical/backend/service-interfaces.md')
 @import('docs/technical/backend/implementation-guide.md')
 @import('docs/technical/backend/workflow-context-management.md')
+@import('docs/technical/backend/action-execution.md')
 ```
 
 ### Technical - Integration

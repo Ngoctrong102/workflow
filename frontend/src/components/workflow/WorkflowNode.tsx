@@ -1,11 +1,14 @@
 import { memo } from "react"
 import { Handle, Position, type NodeProps } from "reactflow"
 import { cn } from "@/lib/utils"
-import type { WorkflowNodeType } from "@/types/workflow"
+import { NodeTypeEnum } from "@/types/workflow"
 import { NODE_DEFINITIONS, NODE_ICONS } from "@/constants/workflow-nodes"
 import { parseFieldReference, formatFieldReference, getFieldDisplayName } from "@/utils/fieldReferenceUtils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useContext } from "react"
+import { useActionRegistryById } from "@/hooks/use-action-registry"
+import { useTriggerRegistryById } from "@/hooks/use-trigger-registry"
+import { getNodeCategory } from "@/utils/node-type-utils"
 
 // Import context directly (will be null if provider not available)
 let FieldReferenceContext: React.Context<any> | null = null
@@ -18,14 +21,17 @@ try {
 
 interface CustomNodeData {
   label: string
-  type: WorkflowNodeType
+  type: NodeTypeEnum
   config?: Record<string, unknown>
   invalid?: boolean
 }
 
-export const WorkflowNode = memo(function WorkflowNode({ data, selected, id }: NodeProps<CustomNodeData>) {
-  const nodeDef = NODE_DEFINITIONS.find((n) => n.type === data.type)
-  
+interface CustomNodeDataWithRegistry extends CustomNodeData {
+  registryId?: string
+  configTemplate?: Record<string, unknown>
+}
+
+export const WorkflowNode = memo(function WorkflowNode({ data, selected, id }: NodeProps<CustomNodeDataWithRegistry>) {
   // Try to get field reference context (optional)
   let getFieldDefinition: (objectTypeId: string, fieldPath: string) => any = () => null
   if (FieldReferenceContext) {
@@ -39,8 +45,94 @@ export const WorkflowNode = memo(function WorkflowNode({ data, selected, id }: N
     }
   }
 
+  // Check if this is a trigger or action node with registryId/triggerConfigId
+  const nodeConfig = (data as any)?.config || {}
+  const registryId = (data as any)?.registryId || nodeConfig.registryId
+  const triggerConfigId = nodeConfig.triggerConfigId
+  const nodeType = data.type || ''
+  
+  // Use helper function to correctly detect node category
+  // This follows backend enum NodeType (TRIGGER, LOGIC, ACTION)
+  const nodeCategory = getNodeCategory(nodeType, nodeConfig)
+  const isTrigger = nodeCategory === NodeTypeEnum.TRIGGER
+  const isAction = nodeCategory === NodeTypeEnum.ACTION
+  
+  // For triggers, use triggerConfigId if available, otherwise use registryId
+  // IMPORTANT: Only set triggerId for actual trigger nodes, NOT for action nodes
+  // Action nodes have their own registry and should NOT call trigger API
+  // CRITICAL: Only use registryId for triggerId if this is actually a trigger node
+  // Do NOT use registryId for action nodes - they have their own API endpoint
+  const triggerId = isTrigger ? (triggerConfigId || registryId) : undefined
+  
+  // Debug logging in development
+  if (import.meta.env.DEV && registryId) {
+    console.log('[WorkflowNode] Node registry lookup:', {
+      nodeId: id,
+      nodeType,
+      registryId,
+      triggerConfigId,
+      isTrigger,
+      isAction,
+      triggerId,
+      willCallTriggerAPI: !!triggerId,
+      willCallActionAPI: isAction,
+    })
+  }
+  
+  // Load registry data if needed
+  // Only call trigger API if this is actually a trigger node
+  const { data: triggerRegistryItem } = useTriggerRegistryById(triggerId)
+  // Only call action API if this is actually an action node
+  const { data: actionRegistryItem } = useActionRegistryById(isAction ? registryId : undefined)
+  
+  // Find node definition from NODE_DEFINITIONS first
+  let nodeDef = NODE_DEFINITIONS.find((n) => n.type === data.type)
+  
+  // If not found and this is a registry node, create a default nodeDef from registry data
+  if (!nodeDef && (registryId || triggerConfigId)) {
+    const registryItem = isTrigger ? triggerRegistryItem : actionRegistryItem
+    if (registryItem) {
+      nodeDef = {
+        type: data.type,
+        category: isTrigger ? 'trigger' : 'action',
+        label: registryItem.name || data.label || data.type,
+        description: registryItem.description || '',
+        icon: (registryItem.metadata?.icon as string) || 'api-call',
+        color: (registryItem.metadata?.color as string) || '#22c55e',
+        inputs: isTrigger ? 0 : 1,
+        outputs: 1,
+      }
+    }
+  }
+  
+  // If still not found, create a minimal default nodeDef
+  // CRITICAL: Use nodeCategory (isTrigger/isAction) to determine inputs
   if (!nodeDef) {
-    return null
+    nodeDef = {
+      type: data.type,
+      category: isTrigger ? 'trigger' : (isAction ? 'action' : 'logic'),
+      label: data.label || data.type,
+      description: '',
+      icon: 'api-call',
+      color: '#22c55e',
+      inputs: isTrigger ? 0 : 1, // Trigger nodes have 0 inputs, others have 1
+      outputs: 1,
+    }
+  }
+  
+  // Debug logging for nodeDef inputs
+  if (import.meta.env.DEV) {
+    console.log('[WorkflowNode] Node definition:', {
+      nodeId: id,
+      nodeType,
+      nodeCategory,
+      isTrigger,
+      isAction,
+      nodeDefInputs: nodeDef.inputs,
+      nodeDefOutputs: nodeDef.outputs,
+      hasTriggerConfigId: !!triggerConfigId,
+      hasRegistryId: !!registryId,
+    })
   }
 
   const IconComponent = NODE_ICONS[nodeDef.icon]
@@ -52,30 +144,23 @@ export const WorkflowNode = memo(function WorkflowNode({ data, selected, id }: N
     let fieldDisplayName: string | null = null
     let fieldTooltip: string | null = null
 
-    switch (data.type) {
-      case "condition":
-        if (config.field) {
-          fieldValue = typeof config.field === "string" ? config.field : formatFieldReference(config.field)
-          const parsed = parseFieldReference(config.field)
-          if (parsed?.objectTypeId) {
-            fieldDisplayName = getFieldDisplayName(parsed.objectTypeId, parsed.fieldPath)
-            const fieldDef = getFieldDefinition(parsed.objectTypeId, parsed.fieldPath)
-            if (fieldDef) {
-              fieldTooltip = fieldDef.description || `${parsed.objectTypeId}.${parsed.fieldPath} (${fieldDef.type})`
-            }
+    // Check subtype in config instead of nodeType (legacy)
+    const nodeSubtype = config?.subtype as string | undefined
+    const nodeCategory = getNodeCategory(data.type, config)
+    
+    // Only handle logic nodes with condition subtype
+    if (nodeCategory === NodeTypeEnum.LOGIC && nodeSubtype === "condition") {
+      if (config.field) {
+        fieldValue = typeof config.field === "string" ? config.field : formatFieldReference(config.field)
+        const parsed = parseFieldReference(config.field)
+        if (parsed?.objectTypeId) {
+          fieldDisplayName = getFieldDisplayName(parsed.objectTypeId, parsed.fieldPath)
+          const fieldDef = getFieldDefinition(parsed.objectTypeId, parsed.fieldPath)
+          if (fieldDef) {
+            fieldTooltip = fieldDef.description || `${parsed.objectTypeId}.${parsed.fieldPath} (${fieldDef.type})`
           }
         }
-        break
-      case "transform":
-        if (config.sourceField) {
-          fieldValue = typeof config.sourceField === "string" ? config.sourceField : formatFieldReference(config.sourceField)
-        }
-        break
-      case "filter":
-        if (config.field) {
-          fieldValue = typeof config.field === "string" ? config.field : formatFieldReference(config.field)
-        }
-        break
+      }
     }
 
     return { fieldValue, fieldDisplayName, fieldTooltip }

@@ -1,5 +1,8 @@
 package com.notificationplatform.entity.enums;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
  * Enum representing action type values.
  */
@@ -15,15 +18,22 @@ public enum ActionType {
         this.value = value;
     }
 
+    /**
+     * Get the string value for JSON serialization.
+     * @return The string value
+     */
+    @JsonValue
     public String getValue() {
         return value;
     }
 
     /**
-     * Get ActionType from string value.
+     * Create ActionType from string value for JSON deserialization.
      * @param value The string value
-     * @return ActionType enum or null if not found
+     * @return ActionType enum
+     * @throws IllegalArgumentException if value is not recognized
      */
+    @JsonCreator
     public static ActionType fromValue(String value) {
         if (value == null) {
             return null;
@@ -33,7 +43,7 @@ public enum ActionType {
                 return type;
             }
         }
-        return null;
+        throw new IllegalArgumentException("Unknown ActionType value: " + value);
     }
 }
 

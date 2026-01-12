@@ -1,12 +1,9 @@
 package com.notificationplatform.service.bulk;
 
 import com.notificationplatform.dto.response.BulkOperationResult;
-import com.notificationplatform.entity.Template;
 import com.notificationplatform.entity.Workflow;
 import com.notificationplatform.entity.enums.WorkflowStatus;
-import com.notificationplatform.repository.TemplateRepository;
 import com.notificationplatform.repository.WorkflowRepository;
-import com.notificationplatform.service.template.TemplateService;
 import com.notificationplatform.service.workflow.WorkflowService;
 
 
@@ -22,18 +19,12 @@ import lombok.extern.slf4j.Slf4j;
 public class BulkOperationServiceImpl implements BulkOperationService {
 
     private final WorkflowRepository workflowRepository;
-    private final TemplateRepository templateRepository;
     private final WorkflowService workflowService;
-    private final TemplateService templateService;
 
     public BulkOperationServiceImpl(WorkflowRepository workflowRepository,
-                                    TemplateRepository templateRepository,
-                                    WorkflowService workflowService,
-                                    TemplateService templateService) {
+                                    WorkflowService workflowService) {
         this.workflowRepository = workflowRepository;
-        this.templateRepository = templateRepository;
         this.workflowService = workflowService;
-        this.templateService = templateService;
     }
 
     @Override
@@ -143,97 +134,20 @@ public class BulkOperationServiceImpl implements BulkOperationService {
 
     @Override
     public BulkOperationResult bulkDeleteTemplates(List<String> templateIds) {
-        BulkOperationResult result = new BulkOperationResult();
-        result.setTotal(templateIds.size());
-        result.setSuccess(0);
-        result.setFailed(0);
-
-        List<BulkOperationResult.OperationResult> results = new ArrayList<>();
-
-        for (String templateId : templateIds) {
-            BulkOperationResult.OperationResult operationResult = new BulkOperationResult.OperationResult();
-            operationResult.setId(templateId);
-
-            try {
-                Template template = templateRepository.findByIdAndNotDeleted(templateId)
-                        .orElse(null);
-
-                if (template == null) {
-                    operationResult.setSuccess(false);
-                    operationResult.setError("Template not found");
-                    result.setFailed(result.getFailed() + 1);
-                } else {
-                    operationResult.setName(template.getName());
-                    templateService.deleteTemplate(templateId);
-                    operationResult.setSuccess(true);
-                    operationResult.setMessage("Template deleted successfully");
-                    result.setSuccess(result.getSuccess() + 1);
-                }
-            } catch (Exception e) {
-                log.error("Error deleting template: {}", templateId, e);
-                operationResult.setSuccess(false);
-                operationResult.setError(e.getMessage());
-                result.setFailed(result.getFailed() + 1);
-            }
-
-            results.add(operationResult);
-        }
-
-        result.setResults(results);
-        result.setSummary(createSummary(result));
-
-        log.info("Bulk delete templates: total={}, success={}, failed={}",
-                   result.getTotal(), result.getSuccess(), result.getFailed());
-
-        return result;
+        // Note: Template entity no longer exists - this operation needs to be refactored
+        throw new UnsupportedOperationException(
+            "bulkDeleteTemplates() needs to be refactored to remove Template entity dependency. " +
+            "Will be implemented in a later sprint."
+        );
     }
 
     @Override
     public BulkOperationResult bulkUpdateTemplateStatus(List<String> templateIds, String status) {
-        BulkOperationResult result = new BulkOperationResult();
-        result.setTotal(templateIds.size());
-        result.setSuccess(0);
-        result.setFailed(0);
-
-        List<BulkOperationResult.OperationResult> results = new ArrayList<>();
-
-        for (String templateId : templateIds) {
-            BulkOperationResult.OperationResult operationResult = new BulkOperationResult.OperationResult();
-            operationResult.setId(templateId);
-
-            try {
-                Template template = templateRepository.findByIdAndNotDeleted(templateId)
-                        .orElse(null);
-
-                if (template == null) {
-                    operationResult.setSuccess(false);
-                    operationResult.setError("Template not found");
-                    result.setFailed(result.getFailed() + 1);
-                } else {
-                    operationResult.setName(template.getName());
-                    template.setStatus(status);
-                    templateRepository.save(template);
-                    operationResult.setSuccess(true);
-                    operationResult.setMessage("Template status updated to " + status);
-                    result.setSuccess(result.getSuccess() + 1);
-                }
-            } catch (Exception e) {
-                log.error("Error updating template status: {}", templateId, e);
-                operationResult.setSuccess(false);
-                operationResult.setError(e.getMessage());
-                result.setFailed(result.getFailed() + 1);
-            }
-
-            results.add(operationResult);
-        }
-
-        result.setResults(results);
-        result.setSummary(createSummary(result));
-
-        log.info("Bulk update template status: total={}, success={}, failed={}, status={}",
-                   result.getTotal(), result.getSuccess(), result.getFailed(), status);
-
-        return result;
+        // Note: Template entity no longer exists - this operation needs to be refactored
+        throw new UnsupportedOperationException(
+            "bulkUpdateTemplateStatus() needs to be refactored to remove Template entity dependency. " +
+            "Will be implemented in a later sprint."
+        );
     }
 
     private Map<String, Object> createSummary(BulkOperationResult result) {

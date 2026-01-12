@@ -1,19 +1,13 @@
 package com.notificationplatform.service.analytics;
 
-import com.notificationplatform.dto.response.ChannelAnalyticsResponse;
-import com.notificationplatform.dto.response.DeliveryAnalyticsResponse;
 import com.notificationplatform.dto.response.ErrorAnalyticsResponse;
 import com.notificationplatform.dto.response.WorkflowAnalyticsResponse;
-import com.notificationplatform.entity.Channel;
 import com.notificationplatform.entity.Execution;
 import com.notificationplatform.entity.NodeExecution;
 import com.notificationplatform.entity.Workflow;
 import com.notificationplatform.repository.AnalyticsRepository;
-import com.notificationplatform.repository.ChannelRepository;
-import com.notificationplatform.repository.DeliveryRepository;
 import com.notificationplatform.repository.ExecutionRepository;
 import com.notificationplatform.repository.NodeExecutionRepository;
-import com.notificationplatform.repository.NotificationRepository;
 import com.notificationplatform.repository.WorkflowRepository;
 
 
@@ -33,26 +27,17 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     private final WorkflowRepository workflowRepository;
     private final ExecutionRepository executionRepository;
-    private final NotificationRepository notificationRepository;
-    private final DeliveryRepository deliveryRepository;
-    private final ChannelRepository channelRepository;
     private final AnalyticsRepository analyticsRepository;
     private final NodeExecutionRepository nodeExecutionRepository;
     private final AnalyticsAggregator analyticsAggregator;
 
     public AnalyticsServiceImpl(WorkflowRepository workflowRepository,
                                ExecutionRepository executionRepository,
-                               NotificationRepository notificationRepository,
-                               DeliveryRepository deliveryRepository,
-                               ChannelRepository channelRepository,
                                AnalyticsRepository analyticsRepository,
                                NodeExecutionRepository nodeExecutionRepository,
                                AnalyticsAggregator analyticsAggregator) {
         this.workflowRepository = workflowRepository;
         this.executionRepository = executionRepository;
-        this.notificationRepository = notificationRepository;
-        this.deliveryRepository = deliveryRepository;
-        this.channelRepository = channelRepository;
         this.analyticsRepository = analyticsRepository;
         this.nodeExecutionRepository = nodeExecutionRepository;
         this.analyticsAggregator = analyticsAggregator;
@@ -131,117 +116,6 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public DeliveryAnalyticsResponse getDeliveryAnalytics(LocalDate startDate, LocalDate endDate, String channel) {
-        LocalDateTime start = startDate != null ? startDate.atStartOfDay() : null;
-        LocalDateTime end = endDate != null ? endDate.atTime(23, 59, 59) : null;
-
-        List<com.notificationplatform.entity.Delivery> deliveries;
-        if (channel != null && !channel.isEmpty()) {
-            deliveries = deliveryRepository.findByChannelAndDateRange(channel, start, end);
-        } else {
-            deliveries = deliveryRepository.findByDateRange(start, end);
-        }
-
-        long totalSent = deliveries.size();
-        long delivered = deliveries.stream()
-                .filter(d -> "delivered".equals(d.getStatus()))
-                .count();
-        long failed = deliveries.stream()
-                .filter(d -> "failed".equals(d.getStatus()))
-                .count();
-        long pending = deliveries.stream()
-                .filter(d -> "pending".equals(d.getStatus()) || "sending".equals(d.getStatus()))
-                .count();
-
-        double deliveryRate = totalSent > 0 ? (double) delivered / totalSent * 100 : 0.0;
-
-        // Group by channel
-        Map<String, Long> byChannel = deliveries.stream()
-                .collect(Collectors.groupingBy(
-                        com.notificationplatform.entity.Delivery::getChannel,
-                        Collectors.counting()
-                ));
-
-        // Group by status
-        Map<String, Long> byStatus = deliveries.stream()
-                .collect(Collectors.groupingBy(
-                        com.notificationplatform.entity.Delivery::getStatus,
-                        Collectors.counting()
-                ));
-
-        DeliveryAnalyticsResponse response = new DeliveryAnalyticsResponse();
-        response.setTotalSent(totalSent);
-        response.setDelivered(delivered);
-        response.setFailed(failed);
-        response.setPending(pending);
-        response.setDeliveryRate(deliveryRate);
-        response.setByChannel(byChannel);
-        response.setByStatus(byStatus);
-
-        return response;
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public ChannelAnalyticsResponse getChannelAnalytics(String channelId, LocalDate startDate, LocalDate endDate) {
-        Channel channel = channelRepository.findById(channelId)
-                .orElseThrow(() -> new IllegalArgumentException("Channel not found: " + channelId));
-
-        LocalDateTime start = startDate != null ? startDate.atStartOfDay() : null;
-        LocalDateTime end = endDate != null ? endDate.atTime(23, 59, 59) : null;
-
-        List<com.notificationplatform.entity.Delivery> deliveries = deliveryRepository
-                .findByChannelAndDateRange(channel.getType(), start, end);
-
-        long totalSent = deliveries.size();
-        long delivered = deliveries.stream()
-                .filter(d -> "delivered".equals(d.getStatus()))
-                .count();
-        long failed = deliveries.stream()
-                .filter(d -> "failed".equals(d.getStatus()))
-                .count();
-
-        double deliveryRate = totalSent > 0 ? (double) delivered / totalSent * 100 : 0.0;
-
-        double averageDeliveryTime = deliveries.stream()
-                .filter(d -> d.getDeliveredAt() != null && d.getSentAt() != null)
-                .mapToLong(d -> java.time.Duration.between(d.getSentAt(), d.getDeliveredAt()).toMillis())
-                .average()
-                .orElse(0.0);
-
-        // Group errors by type (extract from error message)
-        Map<String, Long> errorsByType = deliveries.stream()
-                .filter(d -> d.getError() != null)
-                .collect(Collectors.groupingBy(
-                        d -> extractErrorType(d.getError()),
-                        Collectors.counting()
-                ));
-
-        ChannelAnalyticsResponse response = new ChannelAnalyticsResponse();
-        response.setChannelId(channelId);
-        response.setChannelName(channel.getName());
-        response.setChannelType(channel.getType());
-        response.setTotalSent(totalSent);
-        response.setDelivered(delivered);
-        response.setFailed(failed);
-        response.setDeliveryRate(deliveryRate);
-        response.setAverageDeliveryTime(averageDeliveryTime);
-        response.setErrorsByType(errorsByType);
-
-        return response;
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<ChannelAnalyticsResponse> getAllChannelsAnalytics(LocalDate startDate, LocalDate endDate) {
-        List<Channel> channels = channelRepository.findAllActive();
-        return channels.stream()
-                .map(c -> getChannelAnalytics(c.getId(), startDate, endDate))
-                .collect(Collectors.toList());
-    }
-
-    @Override
     public ErrorAnalyticsResponse getErrorAnalytics(LocalDate startDate, LocalDate endDate, String workflowId, String errorType) {
         LocalDateTime start = startDate != null ? startDate.atStartOfDay() : null;
         LocalDateTime end = endDate != null ? endDate.atTime(23, 59, 59) : null;
@@ -267,14 +141,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                     execution.getId(), "failed"));
         }
 
-        // Get failed deliveries
-        List<com.notificationplatform.entity.Delivery> failedDeliveries = deliveryRepository
-                .findByDateRange(start, end)
-                .stream()
-                .filter(d -> "failed".equals(d.getStatus()))
-                .collect(Collectors.toList());
-
-        long totalErrors = failedExecutions.size() + failedDeliveries.size();
+        long totalErrors = failedExecutions.size();
 
         // Group errors by type
         Map<String, Long> errorsByType = new HashMap<>();
@@ -282,12 +149,6 @@ public class AnalyticsServiceImpl implements AnalyticsService {
             String errorTypeFromExec = extractErrorType(exec.getError());
             if (errorType == null || errorType.equals(errorTypeFromExec)) {
                 errorsByType.put(errorTypeFromExec, errorsByType.getOrDefault(errorTypeFromExec, 0L) + 1);
-            }
-        }
-        for (com.notificationplatform.entity.Delivery delivery : failedDeliveries) {
-            String errorTypeFromDelivery = extractErrorType(delivery.getError());
-            if (errorType == null || errorType.equals(errorTypeFromDelivery)) {
-                errorsByType.put(errorTypeFromDelivery, errorsByType.getOrDefault(errorTypeFromDelivery, 0L) + 1);
             }
         }
 
@@ -299,12 +160,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                         Collectors.counting()
                 ));
 
-        // Group errors by channel
-        Map<String, Long> errorsByChannel = failedDeliveries.stream()
-                .collect(Collectors.groupingBy(
-                        com.notificationplatform.entity.Delivery::getChannel,
-                        Collectors.counting()
-                ));
+        Map<String, Long> errorsByChannel = new HashMap<>();
 
         // Group errors by node
         Map<String, Long> errorsByNode = failedNodeExecutions.stream()

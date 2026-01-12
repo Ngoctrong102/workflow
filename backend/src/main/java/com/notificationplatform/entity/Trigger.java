@@ -16,13 +16,18 @@ import java.util.List;
 import java.util.Map;
 
 @Entity
-@Table(name = "triggers")
+@Table(name = "triggers", indexes = {
+    @Index(name = "idx_triggers_name", columnList = "name"),
+    @Index(name = "idx_triggers_trigger_type", columnList = "trigger_type"),
+    @Index(name = "idx_triggers_status", columnList = "status"),
+    @Index(name = "idx_triggers_deleted_at", columnList = "deleted_at")
+})
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = {"workflow", "executions", "fileUploads"})
-@EqualsAndHashCode(exclude = {"workflow", "executions", "fileUploads"})
+@ToString(exclude = {"executions"})
+@EqualsAndHashCode(exclude = {"executions"})
 public class Trigger {
 
     @Id
@@ -31,15 +36,10 @@ public class Trigger {
     @Size(max = 255)
     private String id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "workflow_id", nullable = false)
-    @NotNull
-    private Workflow workflow;
-
-    @Column(name = "node_id", nullable = false, length = 255)
+    @Column(name = "name", nullable = false, length = 255)
     @NotBlank
     @Size(max = 255)
-    private String nodeId; // Node ID in workflow definition
+    private String name; // User-friendly name for the trigger config
 
     @Column(name = "trigger_type", nullable = false, length = 50)
     @Enumerated(EnumType.STRING)
@@ -73,9 +73,6 @@ public class Trigger {
     // Relationships
     @OneToMany(mappedBy = "trigger")
     private List<Execution> executions = new ArrayList<>();
-
-    @OneToMany(mappedBy = "trigger")
-    private List<FileUpload> fileUploads = new ArrayList<>();
 
     @PrePersist
     protected void onCreate() {

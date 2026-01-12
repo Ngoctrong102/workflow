@@ -19,6 +19,8 @@ This directory contains detailed feature specifications for the No-Code Workflow
 13. **[Workflow Report](./workflow-report.md)** - Automated report generation and scheduling for workflows
 14. **[A/B Testing](./ab-testing.md)** - Testing different workflow variants
 15. **[Schema Definition](./schema-definition.md)** - Define schemas and fields for field selection in workflows
+16. **[MVEL Expression System](./mvel-expression-system.md)** - Unified dynamic logic và placeholders system using MVEL expressions
+17. **[Action Registry](./action-registry.md)** - Action schema structure (Input Schema, Config Template, Output Schema, Output Mapping)
 
 ## Feature Dependencies
 

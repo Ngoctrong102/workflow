@@ -3,16 +3,18 @@ package com.notificationplatform.dto.response;
 import java.time.LocalDateTime;
 import java.util.Map;
 
+/**
+ * Response DTO for trigger config.
+ * Trigger configs are independent and can be shared across multiple workflows.
+ */
 public class TriggerResponse {
 
     private String id;
-    private String workflowId;
-    private String type;
-    private String path;
-    private String method;
-    private String status;
-    private String uploadEndpoint; // For file triggers
-    private Map<String, Object> config;
+    private String name; // User-friendly name for the trigger config
+    private String triggerType; // api-call, scheduler, event
+    private String status; // active, inactive
+    private Map<String, Object> config; // Type-specific configuration
+    private String errorMessage; // Error message if config has error
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -25,36 +27,20 @@ public class TriggerResponse {
         this.id = id;
     }
 
-    public String getWorkflowId() {
-        return workflowId;
+    public String getName() {
+        return name;
     }
 
-    public void setWorkflowId(String workflowId) {
-        this.workflowId = workflowId;
+    public void setName(String name) {
+        this.name = name;
     }
 
-    public String getType() {
-        return type;
+    public String getTriggerType() {
+        return triggerType;
     }
 
-    public void setType(String type) {
-        this.type = type;
-    }
-
-    public String getPath() {
-        return path;
-    }
-
-    public void setPath(String path) {
-        this.path = path;
-    }
-
-    public String getMethod() {
-        return method;
-    }
-
-    public void setMethod(String method) {
-        this.method = method;
+    public void setTriggerType(String triggerType) {
+        this.triggerType = triggerType;
     }
 
     public String getStatus() {
@@ -65,12 +51,12 @@ public class TriggerResponse {
         this.status = status;
     }
 
-    public String getUploadEndpoint() {
-        return uploadEndpoint;
+    public String getErrorMessage() {
+        return errorMessage;
     }
 
-    public void setUploadEndpoint(String uploadEndpoint) {
-        this.uploadEndpoint = uploadEndpoint;
+    public void setErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
     }
 
     public Map<String, Object> getConfig() {

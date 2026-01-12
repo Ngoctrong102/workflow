@@ -1,7 +1,6 @@
 package com.notificationplatform.service.dashboard;
 
 import com.notificationplatform.dto.response.PagedResponse;
-import com.notificationplatform.dto.response.WorkflowChannelPerformanceDTO;
 import com.notificationplatform.dto.response.WorkflowDashboardDTO;
 import com.notificationplatform.dto.response.WorkflowErrorAnalysisDTO;
 import com.notificationplatform.dto.response.WorkflowExecutionTrendDTO;
@@ -20,9 +19,6 @@ public interface WorkflowDashboardService {
 
     List<WorkflowNodePerformanceDTO> getNodePerformance(String workflowId, LocalDateTime startDate,
                                                         LocalDateTime endDate);
-
-    List<WorkflowChannelPerformanceDTO> getChannelPerformance(String workflowId, LocalDateTime startDate,
-                                                              LocalDateTime endDate);
 
     PagedResponse<com.notificationplatform.dto.response.ExecutionStatusResponse> getExecutionHistory(
             String workflowId, String status, LocalDateTime startDate, LocalDateTime endDate,

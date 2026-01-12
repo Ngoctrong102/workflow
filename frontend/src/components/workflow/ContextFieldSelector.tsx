@@ -9,8 +9,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Check, ChevronDown, Database, Zap, Layers, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Node } from "reactflow"
-import type { FieldDefinition } from "@/utils/fieldTypeValidator"
-import { isTriggerNodeType } from "@/utils/node-type-utils"
+import type { FieldDefinition, SchemaDefinition } from "@/components/registry/SchemaEditor"
+import { isTriggerNodeType, isTriggerNode, getNodeCategory } from "@/utils/node-type-utils"
+import { NodeTypeEnum } from "@/types/workflow"
 
 export interface ContextFieldOption {
   value: string
@@ -27,8 +28,6 @@ export interface ContextFieldSelectorProps {
   onChange: (value: string) => void
   nodes: Node[]
   currentNodeId: string
-  triggerObjectTypeId?: string | null
-  objectTypes?: Map<string, { name: string; fields: FieldDefinition[] }>
   label?: string
   description?: string
   placeholder?: string
@@ -42,8 +41,6 @@ export function ContextFieldSelector({
   onChange,
   nodes,
   currentNodeId,
-  triggerObjectTypeId,
-  objectTypes,
   label = "Field",
   description,
   placeholder = "Select or enter field path",
@@ -62,10 +59,14 @@ export function ContextFieldSelector({
   }, [nodes, currentNodeId])
 
   // Get trigger nodes (nodes with category "trigger")
+  // Use getNodeCategory to correctly detect trigger nodes (checks both nodeType and triggerConfigId)
   const triggerNodes = useMemo(() => {
     return nodes.filter((node) => {
       const nodeType = node.data?.type as string
-      return isTriggerNodeType(nodeType)
+      const nodeConfig = (node.data as any)?.config || {}
+      // Use getNodeCategory to correctly detect trigger nodes
+      const nodeCategory = getNodeCategory(nodeType, nodeConfig)
+      return nodeCategory === NodeTypeEnum.TRIGGER
     })
   }, [nodes])
 
@@ -74,26 +75,52 @@ export function ContextFieldSelector({
     const options: ContextFieldOption[] = []
 
     // 1. Trigger data fields - accessed via _nodeOutputs.{triggerNodeId}
+    // For trigger nodes, schema is stored in node.data.config.schemas
+    // Check both top-level config and nested config structure
+    // Also check configTemplate if schemas not found in config
     triggerNodes.forEach((triggerNode) => {
       const triggerNodeLabel = triggerNode.data?.label || triggerNode.id
-      const triggerNodeObjectTypeId = triggerNode.data?.config?.objectTypeId
+      const nodeConfig = (triggerNode.data?.config as any) || {}
+      // Check both top-level and nested config for schemas
+      let triggerSchemas = (nodeConfig.schemas || (nodeConfig.config as any)?.schemas || []) as SchemaDefinition[]
       
-      if (triggerNodeObjectTypeId && objectTypes) {
-        const triggerObjectType = objectTypes.get(triggerNodeObjectTypeId)
-        if (triggerObjectType) {
-          triggerObjectType.fields.forEach((field) => {
-            const fieldPath = `_nodeOutputs.${triggerNode.id}.${field.name}`
-            options.push({
-              value: fieldPath,
-              label: `${triggerNodeLabel}: ${field.displayName || field.name}`,
-              description: `Trigger data from ${triggerNodeLabel} (ID: ${triggerNode.id}) - ${fieldPath}`,
-              type: "trigger",
-              nodeId: triggerNode.id,
-              fieldPath: field.name,
-              fieldType: field.type,
-            })
-          })
+      // If schemas not found in config, try to get from configTemplate
+      if (!triggerSchemas || triggerSchemas.length === 0) {
+        const configTemplate = nodeConfig.configTemplate || (nodeConfig.config as any)?.configTemplate
+        if (configTemplate && (configTemplate as any).schemas) {
+          triggerSchemas = (configTemplate as any).schemas as SchemaDefinition[]
         }
+      }
+      
+      // Debug logging
+      if (import.meta.env.DEV) {
+        console.log('[ContextFieldSelector] Trigger node schema check:', {
+          nodeId: triggerNode.id,
+          nodeLabel: triggerNodeLabel,
+          hasSchemasInConfig: !!(nodeConfig.schemas || (nodeConfig.config as any)?.schemas),
+          hasSchemasInTemplate: !!(nodeConfig.configTemplate || (nodeConfig.config as any)?.configTemplate)?.schemas,
+          schemasCount: triggerSchemas?.length || 0,
+          schemas: triggerSchemas,
+        })
+      }
+      
+      if (triggerSchemas && triggerSchemas.length > 0) {
+        triggerSchemas.forEach((schema) => {
+          if (schema.fields && schema.fields.length > 0) {
+            schema.fields.forEach((field) => {
+              const fieldPath = `_nodeOutputs.${triggerNode.id}.${field.name}`
+              options.push({
+                value: fieldPath,
+                label: `${triggerNodeLabel}: ${field.name}`,
+                description: `Trigger data from ${triggerNodeLabel} (ID: ${triggerNode.id}) - ${fieldPath}`,
+                type: "trigger",
+                nodeId: triggerNode.id,
+                fieldPath: field.name,
+                fieldType: field.type,
+              })
+            })
+          }
+        })
       } else {
         // Generic trigger output (without specific fields)
         options.push({
@@ -107,7 +134,7 @@ export function ContextFieldSelector({
     })
 
     // 2. Node outputs (_nodeOutputs.{nodeId}.{fieldPath}) - non-trigger nodes
-    // Filter out trigger nodes to avoid duplicates (they're already in trigger data section)
+    // For action/logic nodes, outputSchema is stored in node.data.config.outputSchema
     const nonTriggerNodes = previousNodes.filter((node) => {
       const nodeType = node.data?.type as string
       return !isTriggerNodeType(nodeType)
@@ -116,24 +143,27 @@ export function ContextFieldSelector({
     nonTriggerNodes.forEach((node) => {
       const nodeLabel = node.data?.label || node.id
       
-      // If node has object type in config, use it to suggest fields
-      const nodeObjectTypeId = node.data?.config?.objectTypeId
-      if (nodeObjectTypeId && objectTypes) {
-        const nodeObjectType = objectTypes.get(nodeObjectTypeId)
-        if (nodeObjectType) {
-          nodeObjectType.fields.forEach((field) => {
-            const fieldPath = `_nodeOutputs.${node.id}.${field.name}`
-            options.push({
-              value: fieldPath,
-              label: `${nodeLabel}: ${field.displayName || field.name}`,
-              description: `From ${nodeLabel} node (ID: ${node.id}) - ${fieldPath}`,
-              type: "node",
-              nodeId: node.id,
-              fieldPath: field.name,
-              fieldType: field.type,
+      // Get output schema from node config
+      // For action nodes from registry, outputSchema is stored in node.data.config.outputSchema
+      const outputSchema = (node.data?.config as any)?.outputSchema as SchemaDefinition[] || []
+      
+      if (outputSchema && outputSchema.length > 0) {
+        outputSchema.forEach((schema) => {
+          if (schema.fields && schema.fields.length > 0) {
+            schema.fields.forEach((field) => {
+              const fieldPath = `_nodeOutputs.${node.id}.${field.name}`
+              options.push({
+                value: fieldPath,
+                label: `${nodeLabel}: ${field.name}`,
+                description: `From ${nodeLabel} node (ID: ${node.id}) - ${fieldPath}`,
+                type: "node",
+                nodeId: node.id,
+                fieldPath: field.name,
+                fieldType: field.type,
+              })
             })
-          })
-        }
+          }
+        })
       } else {
         // Generic node output (without specific fields)
         options.push({
@@ -163,7 +193,7 @@ export function ContextFieldSelector({
     })
 
     return options
-  }, [triggerNodes, objectTypes, previousNodes])
+  }, [triggerNodes, previousNodes])
 
   // Filter options based on search query and allowed types
   const filteredOptions = useMemo(() => {
@@ -289,7 +319,7 @@ export function ContextFieldSelector({
             <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[400px] p-0" align="start">
+        <PopoverContent className="w-[400px] p-0 z-[10000]" align="start">
           <Command>
             <div className="flex items-center border-b px-3">
               <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />

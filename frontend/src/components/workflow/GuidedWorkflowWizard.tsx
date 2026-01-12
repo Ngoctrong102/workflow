@@ -13,6 +13,7 @@ import { useActionRegistry } from "@/hooks/use-action-registry"
 import { useCreateWorkflow } from "@/hooks/use-workflows"
 import { useToast } from "@/hooks/use-toast"
 import type { WorkflowDefinition, WorkflowNode, WorkflowEdge } from "@/types/workflow"
+import { normalizeWorkflowDefinition } from "@/utils/node-type-utils"
 
 interface GuidedWorkflowWizardProps {
   onComplete?: () => void
@@ -22,8 +23,9 @@ interface GuidedWorkflowWizardProps {
 type WizardStep = 1 | 2 | 3 | 4 | 5
 
 interface TriggerConfig {
-  type: string
-  config: Record<string, unknown>
+  triggerConfigId?: string // ID from trigger registry
+  triggerType: string // api-call, scheduler, event
+  instanceConfig?: Record<string, unknown> // Instance-specific overrides
 }
 
 interface ActionConfig {
@@ -56,7 +58,8 @@ export function GuidedWorkflowWizard({ onComplete, onCancel }: GuidedWorkflowWiz
   const progress = (step / totalSteps) * 100
 
   const selectedTrigger = useMemo(() => {
-    return triggers.find((t) => t.type === selectedTriggerType)
+    // Find trigger by type (api-call, scheduler, event) or by id
+    return triggers.find((t) => t.type === selectedTriggerType || t.id === selectedTriggerType)
   }, [triggers, selectedTriggerType])
 
   const configuringAction = useMemo(() => {
@@ -134,27 +137,66 @@ export function GuidedWorkflowWizard({ onComplete, onCancel }: GuidedWorkflowWiz
       const nodes: WorkflowNode[] = []
       const edges: WorkflowEdge[] = []
 
-      // Add trigger node
+      // Add trigger node with new structure
+      // Use triggerConfigId from trigger registry if available
+      const triggerNodeId = selectedTrigger?.id || triggerConfig.triggerConfigId
+      if (!triggerNodeId) {
+        toast({
+          variant: "destructive",
+          title: "Validation Error",
+          description: "Trigger config ID is required. Please select a trigger from registry.",
+        })
+        return
+      }
+
       const triggerNode: WorkflowNode = {
         id: "trigger-1",
-        type: `trigger-${triggerConfig.type}` as any,
+        type: `event-trigger` as any, // Placeholder type, will be normalized
         position: { x: 250, y: 100 },
         data: {
-          label: selectedTrigger?.name || triggerConfig.type,
-          config: triggerConfig.config,
+          label: selectedTrigger?.name || triggerConfig.triggerType,
+          config: {
+            triggerConfigId: triggerNodeId,
+            triggerType: triggerConfig.triggerType,
+            ...(triggerConfig.instanceConfig && { instanceConfig: triggerConfig.instanceConfig }),
+          },
         },
       }
       nodes.push(triggerNode)
 
-      // Add action nodes
+      // Add action nodes with new structure
       selectedActions.forEach((action, index) => {
+        // Find action from registry
+        const actionRegistryItem = actions.find((a) => a.id === action.registryId || a.type === action.type)
+        if (!action.registryId && !actionRegistryItem) {
+          toast({
+            variant: "destructive",
+            title: "Validation Error",
+            description: `Action ${action.type} not found in registry. Please select a valid action.`,
+          })
+          return
+        }
+
+        const actionRegistryId = action.registryId || actionRegistryItem?.id
+        if (!actionRegistryId) {
+          toast({
+            variant: "destructive",
+            title: "Validation Error",
+            description: `Action registry ID is required for ${action.type}.`,
+          })
+          return
+        }
+
         const actionNode: WorkflowNode = {
           id: action.id,
-          type: `action-${action.type}` as any,
+          type: `api-trigger` as any, // Placeholder type, will be normalized to ACTION
           position: { x: 250, y: 250 + index * 150 },
           data: {
-            label: actions.find((a) => a.type === action.type)?.name || action.type,
-            config: action.config,
+            label: actionRegistryItem?.name || action.type,
+            config: {
+              registryId: actionRegistryId,
+              configValues: action.config, // Store config values in configValues
+            },
           },
         }
         nodes.push(actionNode)
@@ -176,10 +218,13 @@ export function GuidedWorkflowWizard({ onComplete, onCancel }: GuidedWorkflowWiz
         edges,
       }
 
+      // Normalize workflow definition before saving (convert to backend format)
+      const normalizedDefinition = normalizeWorkflowDefinition(workflowDefinition)
+
       const created = await createWorkflow.mutateAsync({
-        name: workflowDefinition.name,
-        description: workflowDefinition.description,
-        definition: workflowDefinition,
+        name: normalizedDefinition.name,
+        description: normalizedDefinition.description,
+        definition: normalizedDefinition,
         status: "draft",
       })
 
@@ -264,22 +309,57 @@ export function GuidedWorkflowWizard({ onComplete, onCancel }: GuidedWorkflowWiz
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Configuration</Label>
-                  <Textarea
-                    placeholder='Enter trigger configuration as JSON, e.g., {"url": "https://example.com/webhook"}'
-                    rows={6}
-                    onChange={(e) => {
-                      try {
-                        const config = JSON.parse(e.target.value || "{}")
-                        setTriggerConfig({ type: selectedTriggerType, config })
-                      } catch {
-                        // Invalid JSON, ignore
-                      }
-                    }}
-                  />
-                  <p className="text-xs text-secondary-500">
-                    Enter configuration as JSON. This will be validated when you proceed.
+                  <Label>Select Trigger Config</Label>
+                  <p className="text-xs text-secondary-500 mb-2">
+                    Select an existing trigger config from registry or create a new one.
                   </p>
+                  <div className="space-y-2">
+                    {triggers
+                      .filter((t) => t.type === selectedTriggerType)
+                      .map((trigger) => (
+                        <div
+                          key={trigger.id}
+                          className={`p-3 border-2 rounded-lg cursor-pointer transition-colors ${
+                            triggerConfig?.triggerConfigId === trigger.id
+                              ? "border-primary-600 bg-primary-50"
+                              : "border-secondary-200 hover:border-secondary-300"
+                          }`}
+                          onClick={() => {
+                            setTriggerConfig({
+                              triggerConfigId: trigger.id,
+                              triggerType: trigger.type,
+                              instanceConfig: {},
+                            })
+                          }}
+                        >
+                          <div className="font-semibold">{trigger.name}</div>
+                          <p className="text-sm text-secondary-500 mt-1">{trigger.description}</p>
+                        </div>
+                      ))}
+                  </div>
+                  {triggerConfig && (
+                    <div className="mt-4 p-3 bg-secondary-50 rounded-md">
+                      <Label className="text-sm font-semibold">Instance Config (Optional)</Label>
+                      <Textarea
+                        placeholder='Enter instance-specific config as JSON, e.g., {"consumerGroup": "workflow-123-consumer"}'
+                        rows={4}
+                        onChange={(e) => {
+                          try {
+                            const instanceConfig = JSON.parse(e.target.value || "{}")
+                            setTriggerConfig({
+                              ...triggerConfig,
+                              instanceConfig,
+                            })
+                          } catch {
+                            // Invalid JSON, ignore
+                          }
+                        }}
+                      />
+                      <p className="text-xs text-secondary-500 mt-1">
+                        Optional: Override trigger config settings for this workflow instance.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -298,13 +378,16 @@ export function GuidedWorkflowWizard({ onComplete, onCancel }: GuidedWorkflowWiz
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {actions.map((action) => (
                     <div
-                      key={action.type}
+                      key={action.id}
                       className="p-4 border rounded-lg hover:border-primary-300 transition-colors"
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="font-semibold">{action.name}</div>
                           <p className="text-sm text-secondary-500 mt-1">{action.description}</p>
+                          <Badge variant="outline" className="mt-2 text-xs">
+                            {action.type}
+                          </Badge>
                         </div>
                         <Button
                           size="sm"
@@ -329,7 +412,7 @@ export function GuidedWorkflowWizard({ onComplete, onCancel }: GuidedWorkflowWiz
                           <div className="flex items-center space-x-2">
                             <Badge>{index + 1}</Badge>
                             <span className="font-medium">
-                              {actions.find((a) => a.type === action.type)?.name || action.type}
+                              {actions.find((a) => a.id === action.registryId || a.type === action.type)?.name || action.type}
                             </span>
                           </div>
                           <Button
@@ -363,7 +446,7 @@ export function GuidedWorkflowWizard({ onComplete, onCancel }: GuidedWorkflowWiz
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-base">
-                          Action {index + 1}: {actions.find((a) => a.type === action.type)?.name || action.type}
+                          Action {index + 1}: {actions.find((a) => a.id === action.registryId || a.type === action.type)?.name || action.type}
                         </CardTitle>
                         <Button
                           size="sm"

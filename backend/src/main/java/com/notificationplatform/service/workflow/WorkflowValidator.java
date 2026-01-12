@@ -3,7 +3,7 @@ package com.notificationplatform.service.workflow;
 import com.notificationplatform.entity.Workflow;
 import com.notificationplatform.entity.enums.NodeType;
 import com.notificationplatform.service.registry.ActionRegistryService;
-import com.notificationplatform.service.registry.TriggerRegistryService;
+import com.notificationplatform.service.trigger.TriggerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -19,7 +19,7 @@ public class WorkflowValidator {
     private static final List<String> VALID_STATUSES = List.of("draft", "active", "inactive", "paused", "archived");
 
     private final ActionRegistryService actionRegistryService;
-    private final TriggerRegistryService triggerRegistryService;
+    private final TriggerService triggerService;
 
     public void validateCreateRequest(com.notificationplatform.dto.request.CreateWorkflowRequest request) {
         if (request.getName() == null || request.getName().trim().isEmpty()) {
@@ -132,17 +132,17 @@ public class WorkflowValidator {
                 throw new IllegalArgumentException("Each node must have an 'id' field");
             }
 
-            if (!node.containsKey("type")) {
-                throw new IllegalArgumentException("Each node must have a 'type' field");
+            // Support both new structure (nodeType) and old structure (type) for backward compatibility
+            String nodeTypeStr = (String) node.get("nodeType"); // New structure
+            if (nodeTypeStr == null) {
+                nodeTypeStr = (String) node.get("type"); // Old structure (backward compatibility)
+            }
+            
+            if (nodeTypeStr == null) {
+                throw new IllegalArgumentException("Each node must have a 'nodeType' or 'type' field");
             }
 
             // Validate node type is a valid enum value
-            Object typeObj = node.get("type");
-            if (!(typeObj instanceof String)) {
-                throw new IllegalArgumentException("Node 'type' must be a string");
-            }
-
-            String nodeTypeStr = (String) typeObj;
             try {
                 // Convert string to enum name format (uppercase, replace "-" with "_")
                 String enumName = nodeTypeStr.toUpperCase().replace("-", "_");
@@ -225,12 +225,21 @@ public class WorkflowValidator {
     private void validateExactlyOneTriggerNode(List<Map<String, Object>> nodes) {
         long triggerCount = nodes.stream()
                 .filter(node -> {
-                    String type = (String) node.get("type");
-                    return type != null && (type.equalsIgnoreCase("trigger") ||
-                            type.equalsIgnoreCase("api-trigger") ||
-                            type.equalsIgnoreCase("schedule-trigger") ||
-                            type.equalsIgnoreCase("event-trigger") ||
-                            type.equalsIgnoreCase("file-trigger"));
+                    // Support both new structure (nodeType) and old structure (type)
+                    String nodeTypeStr = (String) node.get("nodeType");
+                    if (nodeTypeStr == null) {
+                        nodeTypeStr = (String) node.get("type");
+                    }
+                    if (nodeTypeStr == null) {
+                        return false;
+                    }
+                    // All trigger subtypes use TRIGGER node type
+                    String enumName = nodeTypeStr.toUpperCase().replace("-", "_");
+                    try {
+                        return NodeType.valueOf(enumName) == NodeType.TRIGGER;
+                    } catch (IllegalArgumentException e) {
+                        return false;
+                    }
                 })
                 .count();
 
@@ -247,17 +256,21 @@ public class WorkflowValidator {
      */
     private void validateNodeTypes(List<Map<String, Object>> nodes) {
         for (Map<String, Object> node : nodes) {
-            String type = (String) node.get("type");
-            if (type == null) {
-                throw new IllegalArgumentException("Node must have a 'type' field");
+            // Support both new structure (nodeType) and old structure (type)
+            String nodeTypeStr = (String) node.get("nodeType");
+            if (nodeTypeStr == null) {
+                nodeTypeStr = (String) node.get("type");
+            }
+            if (nodeTypeStr == null) {
+                throw new IllegalArgumentException("Node must have a 'nodeType' or 'type' field");
             }
 
             // Convert to enum format and validate
-            String enumName = type.toUpperCase().replace("-", "_");
+            String enumName = nodeTypeStr.toUpperCase().replace("-", "_");
             try {
                 NodeType.valueOf(enumName);
             } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException("Invalid node type: " + type +
+                throw new IllegalArgumentException("Invalid node type: " + nodeTypeStr +
                         ". Valid types are: " + Arrays.toString(NodeType.values()));
             }
         }
@@ -351,30 +364,81 @@ public class WorkflowValidator {
 
     /**
      * Verify trigger node references valid trigger config.
+     * According to documentation, trigger nodes should have:
+     * - nodeType: "trigger" (or type: "trigger" for backward compatibility)
+     * - nodeConfig.triggerConfigId: Reference to trigger config in database (or data.triggerConfigId for old structure)
      */
+    @SuppressWarnings("unchecked")
     private void validateTriggerNodeReferences(List<Map<String, Object>> nodes) {
         for (Map<String, Object> node : nodes) {
-            String type = (String) node.get("type");
-            if (type == null) {
+            // Support both new structure (nodeType) and old structure (type)
+            String nodeTypeStr = (String) node.get("nodeType");
+            if (nodeTypeStr == null) {
+                nodeTypeStr = (String) node.get("type");
+            }
+            if (nodeTypeStr == null) {
                 continue;
             }
 
-            boolean isTrigger = type.equalsIgnoreCase("trigger") ||
-                    type.equalsIgnoreCase("api-trigger") ||
-                    type.equalsIgnoreCase("schedule-trigger") ||
-                    type.equalsIgnoreCase("event-trigger") ||
-                    type.equalsIgnoreCase("file-trigger");
+            // Check if this is a trigger node
+            String enumName = nodeTypeStr.toUpperCase().replace("-", "_");
+            boolean isTrigger = false;
+            try {
+                isTrigger = NodeType.valueOf(enumName) == NodeType.TRIGGER;
+            } catch (IllegalArgumentException e) {
+                // Invalid node type, skip
+                continue;
+            }
 
             if (isTrigger) {
-                String registryId = (String) node.get("registryId");
-                if (registryId == null || registryId.isEmpty()) {
-                    throw new IllegalArgumentException("Trigger node must have a 'registryId' field");
+                // Support both new structure (nodeConfig) and old structure (data)
+                Map<String, Object> nodeConfig = null;
+                if (node.containsKey("nodeConfig")) {
+                    nodeConfig = (Map<String, Object>) node.get("nodeConfig");
+                } else if (node.containsKey("data")) {
+                    nodeConfig = (Map<String, Object>) node.get("data");
                 }
 
-                // Verify trigger exists in registry
-                var triggerDef = triggerRegistryService.getTriggerById(registryId);
-                if (triggerDef.isEmpty()) {
-                    throw new IllegalArgumentException("Trigger registry ID not found: " + registryId);
+                if (nodeConfig == null) {
+                    throw new IllegalArgumentException("Trigger node must have 'nodeConfig' or 'data' field");
+                }
+
+                // Check triggerConfigId (new structure) or registryId (old structure for backward compatibility)
+                // Support multiple locations: top level, nested config, and root level
+                String triggerConfigId = (String) nodeConfig.get("triggerConfigId");
+                if (triggerConfigId == null || triggerConfigId.isEmpty()) {
+                    // Check nested config structure (data.config.config.triggerConfigId)
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> nestedConfig = (Map<String, Object>) nodeConfig.get("config");
+                    if (nestedConfig != null) {
+                        triggerConfigId = (String) nestedConfig.get("triggerConfigId");
+                    }
+                }
+                if (triggerConfigId == null || triggerConfigId.isEmpty()) {
+                    // Backward compatibility: check registryId at top level
+                    triggerConfigId = (String) nodeConfig.get("registryId");
+                }
+                if (triggerConfigId == null || triggerConfigId.isEmpty()) {
+                    // Check nested config for registryId
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> nestedConfig = (Map<String, Object>) nodeConfig.get("config");
+                    if (nestedConfig != null) {
+                        triggerConfigId = (String) nestedConfig.get("registryId");
+                    }
+                }
+                if (triggerConfigId == null || triggerConfigId.isEmpty()) {
+                    // Also check at root level for old structure
+                    triggerConfigId = (String) node.get("registryId");
+                    if (triggerConfigId == null || triggerConfigId.isEmpty()) {
+                        throw new IllegalArgumentException("Trigger node must have 'triggerConfigId' in nodeConfig (or 'registryId' for backward compatibility)");
+                    }
+                }
+
+                // Verify trigger config exists in database (not hardcoded registry)
+                try {
+                    triggerService.getTriggerConfigById(triggerConfigId);
+                } catch (com.notificationplatform.exception.ResourceNotFoundException e) {
+                    throw new IllegalArgumentException("Trigger config not found: " + triggerConfigId);
                 }
             }
         }
@@ -382,20 +446,69 @@ public class WorkflowValidator {
 
     /**
      * Verify action nodes reference valid action registry entries.
+     * According to documentation, action nodes should have:
+     * - nodeType: "action" (or type: "action" for backward compatibility)
+     * - nodeConfig.registryId: Reference to action definition in registry
      */
+    @SuppressWarnings("unchecked")
     private void validateActionNodeReferences(List<Map<String, Object>> nodes) {
         for (Map<String, Object> node : nodes) {
-            String type = (String) node.get("type");
-            if (type == null) {
+            // Support both new structure (nodeType) and old structure (type)
+            String nodeTypeStr = (String) node.get("nodeType");
+            if (nodeTypeStr == null) {
+                nodeTypeStr = (String) node.get("type");
+            }
+            if (nodeTypeStr == null) {
                 continue;
             }
 
-            boolean isAction = type.equalsIgnoreCase("action");
+            // Check if this is an action node
+            String enumName = nodeTypeStr.toUpperCase().replace("-", "_");
+            boolean isAction = false;
+            try {
+                isAction = NodeType.valueOf(enumName) == NodeType.ACTION;
+            } catch (IllegalArgumentException e) {
+                // Invalid node type, skip
+                continue;
+            }
 
             if (isAction) {
-                String registryId = (String) node.get("registryId");
+                // Support both new structure (nodeConfig) and old structure (data)
+                Map<String, Object> nodeConfig = null;
+                if (node.containsKey("nodeConfig")) {
+                    nodeConfig = (Map<String, Object>) node.get("nodeConfig");
+                } else if (node.containsKey("data")) {
+                    nodeConfig = (Map<String, Object>) node.get("data");
+                }
+
+                if (nodeConfig == null) {
+                    throw new IllegalArgumentException("Action node must have 'nodeConfig' or 'data' field");
+                }
+
+                // Check registryId in nodeConfig (support multiple locations: top level, nested config)
+                String registryId = (String) nodeConfig.get("registryId");
                 if (registryId == null || registryId.isEmpty()) {
-                    throw new IllegalArgumentException("Action node must have a 'registryId' field");
+                    // Check nested config structure (data.config.registryId)
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> config = (Map<String, Object>) nodeConfig.get("config");
+                    if (config != null) {
+                        registryId = (String) config.get("registryId");
+                        // Also check nested config.config.registryId
+                        if (registryId == null || registryId.isEmpty()) {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> nestedConfig = (Map<String, Object>) config.get("config");
+                            if (nestedConfig != null) {
+                                registryId = (String) nestedConfig.get("registryId");
+                            }
+                        }
+                    }
+                }
+                if (registryId == null || registryId.isEmpty()) {
+                    // Backward compatibility: check at root level
+                    registryId = (String) node.get("registryId");
+                    if (registryId == null || registryId.isEmpty()) {
+                        throw new IllegalArgumentException("Action node must have 'registryId' in nodeConfig");
+                    }
                 }
 
                 // Verify action exists in registry

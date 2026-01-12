@@ -2,32 +2,105 @@
 
 ## Overview
 
-Triggers must be **defined and registered** before they can be used in workflows. The trigger registry provides a catalog of available triggers that users can select from when building workflows. Each registered trigger has a unique ID and name for easy selection.
+The Trigger Registry system provides a catalog of **trigger configurations** that users can select from when building workflows. The system supports **3 hardcoded trigger types** (API Call, Scheduler, Event), but allows users to create multiple **trigger configs** for each type.
 
 ## Design Principles
 
-1. **Pre-Definition**: Triggers must be defined before use
-2. **Registry-Based**: Central catalog of available triggers
-3. **Instance Management**: Each trigger usage in a workflow creates an independent instance
-4. **Lifecycle Control**: Each instance can be paused/resumed/initialized/destroyed independently
+1. **Hardcoded Types**: Trigger types are fixed in code (api-call, scheduler, event)
+2. **Config-Based**: Users create trigger configs (stored in `triggers` table) that can be reused
+3. **Instance Management**: When a trigger config is added to a workflow, a trigger instance is created
+4. **Shareable Configs**: Multiple trigger nodes can share the same trigger config
 
-## Trigger Definition
+## Concept Hierarchy
 
-A trigger definition specifies the type, configuration template, and metadata for a trigger type.
+```
+Trigger Type (Hardcoded)
+    ↓
+Trigger Config (Database: `triggers` table)
+    ↓
+Trigger Instance (Workflow Definition: node data)
+    ↓
+Runtime Execution (When workflow is activated)
+```
+
+### 1. Trigger Types (Hardcoded)
+
+Three trigger types are hardcoded in the system:
+
+- **API Call Trigger** (`api-call`): Receives HTTP request to start workflow
+- **Scheduler Trigger** (`scheduler`): Cron-based scheduled execution
+- **Event Trigger** (`event`): Listens to Kafka topic events
+
+These types cannot be modified or extended by users. They define the base structure and behavior.
+
+### 2. Trigger Configs (Database)
+
+Users create **trigger configs** that define specific configurations for a trigger type. Each config is stored in the `triggers` table and can be reused across multiple workflows.
+
+**Example**: A user can create:
+- 10 API Call trigger configs (different endpoints, authentication methods)
+- 25 Scheduler trigger configs (different cron expressions, timezones)
+- 5 Event trigger configs (different Kafka topics, brokers)
+
+### 3. Trigger Instances (Workflow Definition)
+
+When a trigger config is added to a workflow, a **trigger instance** is created. The instance is stored in the workflow definition node data and includes:
+- Reference to trigger config (`triggerConfigId`)
+- Trigger type (`triggerType`)
+- Instance-specific overrides (`instanceConfig`)
+
+### 4. Runtime Execution
+
+When a workflow is activated, trigger instances are started based on their configuration. Runtime state (ACTIVE, PAUSED, STOPPED) is stored in the workflow definition.
+
+## Trigger Config Structure
+
+A trigger config contains:
 
 ```json
 {
-  "id": "api-trigger-template-1",
-  "name": "User API Trigger",
-  "type": "api-call",
-  "description": "Trigger workflow via HTTP API call",
-  "category": "api",
-  "configTemplate": {
-    "endpointPath": "/api/v1/trigger/{workflowId}",
+  "id": "trigger-config-123",
+  "name": "Daily Report Scheduler",
+  "triggerType": "scheduler",
+  "status": "active",
+  "config": {
+    "cronExpression": "0 9 * * *",
+    "timezone": "UTC",
+    "startDate": "2024-01-01T00:00:00Z",
+    "endDate": null,
+    "repeat": true,
+    "data": {}
+  },
+  "created_at": "2024-01-01T00:00:00Z",
+  "updated_at": "2024-01-01T00:00:00Z"
+}
+```
+
+### Trigger Config Fields
+
+- **id**: Unique identifier
+- **name**: User-friendly name
+- **triggerType**: One of the 3 hardcoded types (api-call, scheduler, event)
+- **status**: active/inactive (metadata only, not runtime state)
+- **config**: Type-specific configuration (JSONB)
+- **created_at/updated_at**: Timestamps
+
+## Trigger Types Configuration
+
+### 1. API Call Trigger Config
+
+```json
+{
+  "id": "api-trigger-config-1",
+  "name": "User Registration API",
+  "triggerType": "api-call",
+  "config": {
+    "endpointPath": "/api/v1/trigger/user-registration",
     "httpMethod": "POST",
     "authentication": {
       "type": "api-key",
-      "header": "X-API-Key"
+      "header": "X-API-Key",
+      "key": "optional-default-key"
     },
     "requestSchema": {
       "fields": [
@@ -35,444 +108,207 @@ A trigger definition specifies the type, configuration template, and metadata fo
           "name": "userId",
           "type": "string",
           "required": true
-        },
-        {
-          "name": "action",
-          "type": "string",
-          "required": false
         }
       ]
     }
-  },
-  "metadata": {
-    "icon": "api-trigger",
-    "color": "#0ea5e9",
-    "version": "1.0.0"
   }
 }
 ```
 
-## Trigger Types in Registry
-
-### 1. API Call Trigger
+### 2. Scheduler Trigger Config
 
 ```json
 {
-  "id": "api-trigger-standard",
-  "name": "API Call Trigger",
-  "type": "api-call",
-  "description": "Receives HTTP request to start workflow",
-  "configTemplate": {
-    "endpointPath": "/api/v1/trigger/{workflowId}",
-    "httpMethod": "POST",
-    "authentication": {
-      "type": "api-key|bearer-token|none"
-    },
-    "requestSchema": { ... }
-  }
-}
-```
-
-### 2. Scheduler Trigger
-
-```json
-{
-  "id": "scheduler-trigger-standard",
-  "name": "Scheduler Trigger",
-  "type": "scheduler",
-  "description": "Cron-based scheduled execution",
-  "configTemplate": {
+  "id": "scheduler-trigger-config-1",
+  "name": "Daily 9 AM Report",
+  "triggerType": "scheduler",
+  "config": {
     "cronExpression": "0 9 * * *",
-    "timezone": "UTC",
-    "startDate": null,
+    "timezone": "Asia/Ho_Chi_Minh",
+    "startDate": "2024-01-01T00:00:00Z",
     "endDate": null,
     "repeat": true,
-    "data": {}
-  }
-}
-```
-
-### 3. Event Trigger (Kafka)
-
-```json
-{
-  "id": "kafka-event-trigger-standard",
-  "name": "Kafka Event Trigger",
-  "type": "event",
-  "description": "Listens to Kafka topic events",
-  "configTemplate": {
-    "kafka": {
-      "brokers": ["localhost:9092"],
-      "topic": "",
-      "consumerGroup": "workflow-consumer-group",
-      "offset": "latest"
-    },
-    "schemas": [],
-    "kafkaConnect": {
-      "enabled": false,
-      "schemaRegistryUrl": null,
-      "subject": null
+    "data": {
+      "reportType": "daily"
     }
   }
 }
 ```
 
-## Registry Management
+### 3. Event Trigger Config (Kafka)
 
-### Database Schema
-
-```sql
-CREATE TABLE trigger_definitions (
-    id VARCHAR(255) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    type VARCHAR(50) NOT NULL,
-    description TEXT,
-    config_template JSONB NOT NULL,
-    metadata JSONB,
-    version VARCHAR(50) NOT NULL DEFAULT '1.0.0',
-    enabled BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMP
-);
+```json
+{
+  "id": "event-trigger-config-1",
+  "name": "User Events Listener",
+  "triggerType": "event",
+  "config": {
+    "kafka": {
+      "brokers": ["localhost:9092"],
+      "topic": "user.events",
+      "offset": "latest"
+    },
+    "filter": {
+      "eventType": "user.created"
+    }
+  }
+}
 ```
 
-### Registry API
+## Registry API
 
-#### Get Available Triggers
+### Get Available Trigger Configs
 
 ```http
-GET /api/v1/triggers/definitions
+GET /api/v1/triggers/registry
 ```
 
-Response:
+**Response:**
 ```json
 {
   "triggers": [
     {
-      "id": "api-trigger-standard",
-      "name": "API Call Trigger",
-      "type": "api-call",
-      "description": "Receives HTTP request to start workflow",
-      "metadata": {
-        "icon": "api-trigger",
-        "color": "#0ea5e9"
+      "id": "api-trigger-config-1",
+      "name": "User Registration API",
+      "triggerType": "api-call",
+      "status": "active",
+      "config": {
+        "endpointPath": "/api/v1/trigger/user-registration",
+        "httpMethod": "POST"
       }
     },
     {
-      "id": "scheduler-trigger-standard",
-      "name": "Scheduler Trigger",
-      "type": "scheduler",
-      "description": "Cron-based scheduled execution",
-      "metadata": {
-        "icon": "schedule-trigger",
-        "color": "#0ea5e9"
-      }
-    },
-    {
-      "id": "kafka-event-trigger-standard",
-      "name": "Kafka Event Trigger",
-      "type": "event",
-      "description": "Listens to Kafka topic events",
-      "metadata": {
-        "icon": "event-trigger",
-        "color": "#0ea5e9"
+      "id": "scheduler-trigger-config-1",
+      "name": "Daily 9 AM Report",
+      "triggerType": "scheduler",
+      "status": "active",
+      "config": {
+        "cronExpression": "0 9 * * *",
+        "timezone": "Asia/Ho_Chi_Minh"
       }
     }
   ]
 }
 ```
 
-## Workflow Node Configuration
+**Note**: This endpoint returns trigger configs from the `triggers` table, not hardcoded definitions.
 
-### Using Registry in Workflow
+### Get Trigger Config by ID
 
-When creating a trigger node in a workflow, users select from the registry:
+```http
+GET /api/v1/triggers/registry/{id}
+```
+
+### Get Trigger Configs by Type
+
+```http
+GET /api/v1/triggers/registry/type/{type}
+```
+
+**Query Parameters:**
+- `type`: Trigger type (api-call, scheduler, event)
+
+## Trigger Instance Structure
+
+When a trigger config is added to a workflow, a trigger instance is created in the workflow definition:
 
 ```json
 {
-  "id": "node-uuid",
-  "label": "kafkaTrigger",
-  "type": "trigger",
-  "subType": "event",
-  "registryId": "kafka-event-trigger-standard",
-  "config": {
-    "kafka": {
-      "brokers": ["localhost:9092"],
-      "topic": "user-events",
-      "consumerGroup": "workflow-123-consumer",
-      "offset": "latest"
-    },
-    "schemas": [ ... ]
+  "id": "node-1",
+  "nodeType": "trigger",
+  "nodeConfig": {
+    "triggerConfigId": "trigger-config-123",
+    "triggerType": "event",
+    "instanceConfig": {
+      "consumerGroup": "workflow-456-consumer"
+    }
   }
 }
 ```
 
-**Key Points**:
-- `registryId`: References the trigger definition from registry
-- `config`: Instance-specific configuration (overrides template defaults)
-- Each trigger instance has its own configuration
+### Instance Config Fields
+
+**Instance-specific fields** can override or supplement trigger config fields. Currently supported:
+
+- **consumerGroup** (for Event triggers): Each workflow must have a unique consumer group to operate independently
+
+**Note**: The system is designed to easily add more instance-specific fields in the future.
+
+## Schema Definition
+
+Each trigger type has a **schema definition** (defined in Java) that specifies:
+
+- **Shared Fields**: Fields from trigger config (cannot be overridden at instance level)
+- **Instance Fields**: Fields that can be configured at workflow level (e.g., consumerGroup)
+- **Required/Optional**: Field validation rules
+- **Field Types**: Data types and constraints
+
+This schema is used by:
+- **Backend**: TriggerExecutor implementation
+- **Frontend**: UI form rendering in PropertiesPanel
 
 ## Trigger Instance Lifecycle
 
 ### Instance Creation
 
-When a trigger is used in a workflow, a **separate consumer/scheduler instance** is created:
+When a trigger config is added to a workflow:
+1. Trigger instance is created in workflow definition node data
+2. Instance references trigger config via `triggerConfigId`
+3. Instance includes instance-specific overrides in `instanceConfig`
 
-```java
-// Pseudo-code for instance creation
-public TriggerInstance createInstance(String workflowId, String registryId, Map<String, Object> config) {
-    // Get trigger definition from registry
-    TriggerDefinition definition = triggerRegistry.get(registryId);
-    
-    // Create instance-specific configuration
-    TriggerInstance instance = new TriggerInstance();
-    instance.setWorkflowId(workflowId);
-    instance.setRegistryId(registryId);
-    instance.setConfig(mergeConfig(definition.getConfigTemplate(), config));
-    instance.setStatus(TriggerInstanceStatus.INITIALIZED);
-    
-    // Create consumer/scheduler based on type
-    if (definition.getType() == TriggerType.EVENT) {
-        KafkaConsumer consumer = createKafkaConsumer(instance);
-        instance.setConsumer(consumer);
-    } else if (definition.getType() == TriggerType.SCHEDULER) {
-        Scheduler scheduler = createScheduler(instance);
-        instance.setScheduler(scheduler);
-    }
-    
-    return instance;
-}
-```
+### Instance Activation
+
+When workflow is activated:
+1. System reads trigger instances from workflow definition
+2. For each trigger instance:
+   - Load trigger config from database
+   - Merge config with instance-specific overrides
+   - Create runtime consumer/scheduler
+   - Start processing
+3. Runtime state (ACTIVE, PAUSED, STOPPED) is stored in workflow definition
 
 ### Instance States
 
-```java
-public enum TriggerInstanceStatus {
-    INITIALIZED,  // Instance created but not started
-    ACTIVE,       // Instance is running
-    PAUSED,       // Instance is paused
-    STOPPED,      // Instance is stopped
-    ERROR         // Instance has error
-}
-```
+Runtime states stored in workflow definition:
+- **INITIALIZED**: Instance created but not started
+- **ACTIVE**: Instance is running and processing
+- **PAUSED**: Instance is paused (stops processing but keeps connection)
+- **STOPPED**: Instance is stopped completely
+- **ERROR**: Instance has error
 
 ### Lifecycle Operations
 
-#### Initialize
+All lifecycle operations are managed through workflow activation/deactivation:
 
-```http
-POST /api/v1/workflows/{workflowId}/triggers/{triggerId}/init
-```
+- **Start**: When workflow is activated
+- **Stop**: When workflow is deactivated
+- **Pause**: When workflow is paused
+- **Resume**: When workflow is resumed
 
-Creates the consumer/scheduler instance but doesn't start it.
+## Sharing Trigger Configs
 
-#### Start/Resume
+Multiple trigger nodes (across different workflows) can share the same trigger config:
 
-```http
-POST /api/v1/workflows/{workflowId}/triggers/{triggerId}/start
-POST /api/v1/workflows/{workflowId}/triggers/{triggerId}/resume
-```
+**Example:**
+- Trigger Config "Daily 9 AM Report" is used in:
+  - Workflow A (with consumerGroup: "workflow-a-consumer")
+  - Workflow B (with consumerGroup: "workflow-b-consumer")
+  - Workflow C (with consumerGroup: "workflow-c-consumer")
 
-Starts or resumes the consumer/scheduler.
-
-#### Pause
-
-```http
-POST /api/v1/workflows/{workflowId}/triggers/{triggerId}/pause
-```
-
-Pauses the consumer/scheduler (stops processing but keeps connection).
-
-#### Stop
-
-```http
-POST /api/v1/workflows/{workflowId}/triggers/{triggerId}/stop
-```
-
-Stops the consumer/scheduler completely.
-
-#### Destroy
-
-```http
-DELETE /api/v1/workflows/{workflowId}/triggers/{triggerId}
-```
-
-Destroys the instance and releases all resources.
-
-### Instance Management Example
-
-```java
-@Service
-public class TriggerInstanceManager {
-    
-    private final Map<String, TriggerInstance> instances = new ConcurrentHashMap<>();
-    
-    public void initialize(String workflowId, String triggerId, TriggerDefinition definition, Map<String, Object> config) {
-        TriggerInstance instance = createInstance(workflowId, triggerId, definition, config);
-        instances.put(getInstanceKey(workflowId, triggerId), instance);
-        instance.setStatus(TriggerInstanceStatus.INITIALIZED);
-    }
-    
-    public void start(String workflowId, String triggerId) {
-        TriggerInstance instance = getInstance(workflowId, triggerId);
-        if (instance.getStatus() == TriggerInstanceStatus.INITIALIZED || 
-            instance.getStatus() == TriggerInstanceStatus.PAUSED) {
-            instance.getConsumer().start(); // or scheduler.start()
-            instance.setStatus(TriggerInstanceStatus.ACTIVE);
-        }
-    }
-    
-    public void pause(String workflowId, String triggerId) {
-        TriggerInstance instance = getInstance(workflowId, triggerId);
-        if (instance.getStatus() == TriggerInstanceStatus.ACTIVE) {
-            instance.getConsumer().pause(); // or scheduler.pause()
-            instance.setStatus(TriggerInstanceStatus.PAUSED);
-        }
-    }
-    
-    public void stop(String workflowId, String triggerId) {
-        TriggerInstance instance = getInstance(workflowId, triggerId);
-        instance.getConsumer().stop(); // or scheduler.stop()
-        instance.setStatus(TriggerInstanceStatus.STOPPED);
-    }
-    
-    public void destroy(String workflowId, String triggerId) {
-        TriggerInstance instance = getInstance(workflowId, triggerId);
-        stop(workflowId, triggerId);
-        instance.getConsumer().close(); // or scheduler.destroy()
-        instances.remove(getInstanceKey(workflowId, triggerId));
-    }
-}
-```
-
-## Kafka Consumer Instance
-
-### Consumer Configuration
-
-Each Kafka event trigger instance has its own consumer:
-
-```java
-public class KafkaTriggerInstance {
-    private String workflowId;
-    private String triggerId;
-    private KafkaConsumer<String, Object> consumer;
-    private String topic;
-    private String consumerGroup;
-    private TriggerInstanceStatus status;
-    
-    public void start() {
-        if (status == TriggerInstanceStatus.INITIALIZED || 
-            status == TriggerInstanceStatus.PAUSED) {
-            consumer.subscribe(Collections.singletonList(topic));
-            // Start consuming in background thread
-            executorService.submit(() -> {
-                while (status == TriggerInstanceStatus.ACTIVE) {
-                    ConsumerRecords<String, Object> records = consumer.poll(Duration.ofMillis(100));
-                    for (ConsumerRecord<String, Object> record : records) {
-                        triggerWorkflow(record.value());
-                    }
-                }
-            });
-            status = TriggerInstanceStatus.ACTIVE;
-        }
-    }
-    
-    public void pause() {
-        if (status == TriggerInstanceStatus.ACTIVE) {
-            consumer.pause(consumer.assignment());
-            status = TriggerInstanceStatus.PAUSED;
-        }
-    }
-    
-    public void resume() {
-        if (status == TriggerInstanceStatus.PAUSED) {
-            consumer.resume(consumer.assignment());
-            status = TriggerInstanceStatus.ACTIVE;
-        }
-    }
-    
-    public void stop() {
-        status = TriggerInstanceStatus.STOPPED;
-        consumer.unsubscribe();
-    }
-    
-    public void destroy() {
-        stop();
-        consumer.close();
-    }
-}
-```
-
-## Scheduler Instance
-
-### Scheduler Configuration
-
-Each scheduler trigger instance has its own scheduler:
-
-```java
-public class SchedulerTriggerInstance {
-    private String workflowId;
-    private String triggerId;
-    private ScheduledExecutorService scheduler;
-    private ScheduledFuture<?> scheduledTask;
-    private String cronExpression;
-    private TriggerInstanceStatus status;
-    
-    public void start() {
-        if (status == TriggerInstanceStatus.INITIALIZED || 
-            status == TriggerInstanceStatus.PAUSED) {
-            CronExpression cron = CronExpression.parse(cronExpression);
-            scheduledTask = scheduler.scheduleAtFixedRate(
-                () -> triggerWorkflow(),
-                calculateNextExecution(cron),
-                Duration.between(calculateNextExecution(cron), calculateNextExecution(cron))
-            );
-            status = TriggerInstanceStatus.ACTIVE;
-        }
-    }
-    
-    public void pause() {
-        if (status == TriggerInstanceStatus.ACTIVE) {
-            scheduledTask.cancel(false);
-            status = TriggerInstanceStatus.PAUSED;
-        }
-    }
-    
-    public void resume() {
-        if (status == TriggerInstanceStatus.PAUSED) {
-            start();
-        }
-    }
-    
-    public void stop() {
-        if (scheduledTask != null) {
-            scheduledTask.cancel(true);
-        }
-        status = TriggerInstanceStatus.STOPPED;
-    }
-    
-    public void destroy() {
-        stop();
-        scheduler.shutdown();
-    }
-}
-```
+When trigger config is updated, changes apply to all workflows using it (except instance-specific overrides).
 
 ## Benefits
 
-1. **Centralized Management**: All triggers defined in one place
-2. **Easy Selection**: Users select from predefined catalog
-3. **Independent Instances**: Each workflow trigger is independent
-4. **Lifecycle Control**: Fine-grained control over each instance
-5. **Resource Management**: Proper cleanup and resource management
-6. **Scalability**: Each instance can be scaled independently
+1. **Reusability**: Create trigger configs once, use in multiple workflows
+2. **Consistency**: Shared configs ensure consistent behavior
+3. **Flexibility**: Instance-specific overrides allow per-workflow customization
+4. **Maintainability**: Update trigger config once, affects all workflows
+5. **Scalability**: Each workflow has independent consumer/scheduler instance
 
 ## Related Documentation
 
+- [Triggers](./triggers.md) - Trigger mechanisms and configuration
+- [Workflow Builder](./workflow-builder.md) - How to use triggers in workflows
 - [Action Registry](./action-registry.md) - Action registry system
-- [Workflow Builder](./workflow-builder.md) - Workflow builder feature
 - [Node Types](./node-types.md) - Node type specifications
-- [Triggers](./triggers.md) - Trigger details
 - [Schema Definition](./schema-definition.md) - Schema definitions
-

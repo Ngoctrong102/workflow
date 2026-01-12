@@ -30,9 +30,6 @@ public class DataCleanupServiceImpl implements DataCleanupService {
 
     private final ExecutionRepository executionRepository;
     private final NodeExecutionRepository nodeExecutionRepository;
-    private final NotificationRepository notificationRepository;
-    private final DeliveryRepository deliveryRepository;
-    private final FileUploadRepository fileUploadRepository;
     private final AnalyticsRepository analyticsRepository;
 
     private LocalDateTime lastCleanupTime;
@@ -40,15 +37,9 @@ public class DataCleanupServiceImpl implements DataCleanupService {
 
     public DataCleanupServiceImpl(ExecutionRepository executionRepository,
                                   NodeExecutionRepository nodeExecutionRepository,
-                                  NotificationRepository notificationRepository,
-                                  DeliveryRepository deliveryRepository,
-                                  FileUploadRepository fileUploadRepository,
                                   AnalyticsRepository analyticsRepository) {
         this.executionRepository = executionRepository;
         this.nodeExecutionRepository = nodeExecutionRepository;
-        this.notificationRepository = notificationRepository;
-        this.deliveryRepository = deliveryRepository;
-        this.fileUploadRepository = fileUploadRepository;
         this.analyticsRepository = analyticsRepository;
     }
 
@@ -89,22 +80,7 @@ public class DataCleanupServiceImpl implements DataCleanupService {
             result.getDeletedByTable().put("node_executions", deletedNodeExecutions);
             totalDeleted += deletedNodeExecutions;
 
-            // Cleanup notifications older than cutoff date
-            int deletedNotifications = cleanupNotifications(cutoffDate);
-            result.getDeletedByTable().put("notifications", deletedNotifications);
-            totalDeleted += deletedNotifications;
-
-            // Cleanup deliveries older than cutoff date
-            int deletedDeliveries = cleanupDeliveries(cutoffDate);
-            result.getDeletedByTable().put("deliveries", deletedDeliveries);
-            totalDeleted += deletedDeliveries;
-
-            // Cleanup file uploads older than cutoff date
-            int deletedFileUploads = cleanupFileUploads(cutoffDate);
-            result.getDeletedByTable().put("file_uploads", deletedFileUploads);
-            totalDeleted += deletedFileUploads;
-
-            // Cleanup analytics older than cutoff date (keep aggregated data longer)
+            // Cleanup analytics older than cutoff date
             int deletedAnalytics = cleanupAnalytics(cutoffDate);
             result.getDeletedByTable().put("analytics_daily", deletedAnalytics);
             totalDeleted += deletedAnalytics;
@@ -142,20 +118,11 @@ public class DataCleanupServiceImpl implements DataCleanupService {
         // Count records in each table
         recordCounts.put("executions", executionRepository.count());
         recordCounts.put("node_executions", nodeExecutionRepository.count());
-        recordCounts.put("notifications", notificationRepository.count());
-        recordCounts.put("deliveries", deliveryRepository.count());
-        recordCounts.put("file_uploads", fileUploadRepository.count());
         recordCounts.put("analytics_daily", analyticsRepository.count());
 
         // Count records to delete (older than cutoff)
-        // Note: These are approximate counts based on created_at
-        // In production, use proper date range queries
         recordsToDelete.put("executions", 
                 (long) executionRepository.findByDateRange(cutoffDate, LocalDateTime.now()).size());
-        recordsToDelete.put("notifications", 
-                notificationRepository.count()); // Approximate
-        recordsToDelete.put("deliveries", 
-                (long) deliveryRepository.findByDateRange(cutoffDate, LocalDateTime.now()).size());
 
         stats.setRecordCountsByTable(recordCounts);
         stats.setRecordsToDelete(recordsToDelete);
@@ -165,37 +132,16 @@ public class DataCleanupServiceImpl implements DataCleanupService {
 
     private int cleanupExecutions(LocalDateTime cutoffDate) {
         // Soft delete executions older than cutoff date
-        // In production, use proper date range queries
         return 0; // Placeholder - implement actual cleanup logic
     }
 
     private int cleanupNodeExecutions(LocalDateTime cutoffDate) {
         // Delete node executions for deleted executions
-        // In production, use proper cascading deletes or manual cleanup
-        return 0; // Placeholder - implement actual cleanup logic
-    }
-
-    private int cleanupNotifications(LocalDateTime cutoffDate) {
-        // Soft delete notifications older than cutoff date
-        // In production, use proper date range queries
-        return 0; // Placeholder - implement actual cleanup logic
-    }
-
-    private int cleanupDeliveries(LocalDateTime cutoffDate) {
-        // Soft delete deliveries older than cutoff date
-        // In production, use proper date range queries
-        return 0; // Placeholder - implement actual cleanup logic
-    }
-
-    private int cleanupFileUploads(LocalDateTime cutoffDate) {
-        // Delete file uploads older than cutoff date
-        // In production, also delete actual files from storage
         return 0; // Placeholder - implement actual cleanup logic
     }
 
     private int cleanupAnalytics(LocalDateTime cutoffDate) {
         // Delete analytics older than cutoff date
-        // Keep aggregated data longer than raw data
         return 0; // Placeholder - implement actual cleanup logic
     }
 }

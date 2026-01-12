@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Home, Workflow, FileText, BarChart3, Radio, Play, TestTube, Database, ChevronLeft, ChevronRight, Menu, X } from 'lucide-react'
+import { Home, Workflow, BarChart3, Play, TestTube, ChevronLeft, ChevronRight, Menu, X, Zap, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/ui-store'
 import { Button } from '@/components/ui/button'
@@ -9,10 +9,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 const navigationItems = [
   { path: '/dashboard', label: 'Dashboard', icon: Home },
   { path: '/workflows', label: 'Workflows', icon: Workflow },
-  { path: '/templates', label: 'Templates', icon: FileText },
-  { path: '/object-types', label: 'Object Types', icon: Database },
+  { path: '/trigger-registry', label: 'Trigger Registry', icon: Zap },
+  { path: '/actions', label: 'Action Registry', icon: Settings },
   { path: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { path: '/channels', label: 'Channels', icon: Radio },
   { path: '/executions', label: 'Executions', icon: Play },
   { path: '/ab-tests', label: 'A/B Tests', icon: TestTube },
 ]

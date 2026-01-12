@@ -22,7 +22,6 @@ This backend service provides a RESTful API for managing workflows, templates, c
 - **Spring Boot 3.2.0**
 - **Spring Data JPA**
 - **PostgreSQL** (Database)
-- **Flyway** (Database Migrations)
 - **Kafka** (Event Streaming)
 - **Maven** (Build Tool)
 - **Docker** (Containerization)
@@ -203,20 +202,22 @@ mvn clean test jacoco:report
 # View report at: target/site/jacoco/index.html
 ```
 
-## Database Migrations
+## Database Schema
 
-Flyway manages database migrations automatically on application startup.
+The database schema is managed automatically by Hibernate/JPA using `spring.jpa.hibernate.ddl-auto` setting.
 
-### Manual Migration
-```bash
-mvn flyway:migrate
+### Schema Management
+- **Development**: Set `JPA_DDL_AUTO=update` to automatically update schema on startup
+- **Production**: Set `JPA_DDL_AUTO=none` and manage schema manually or use a separate migration tool
+
+### Schema Configuration
+See `application.yml` for JPA configuration:
+```yaml
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
 ```
-
-### Migration Files
-Located in `src/main/resources/db/migration/`:
-- `V1__Create_workflows_table.sql`
-- `V2__Create_templates_table.sql`
-- ... (and more)
 
 ## Building
 
@@ -298,8 +299,7 @@ backend/
 │   │   │   ├── engine/         # Workflow engine
 │   │   │   └── config/         # Configuration
 │   │   └── resources/
-│   │       ├── application.yml # Application config
-│   │       └── db/migration/   # Flyway migrations
+│   │       └── application.yml # Application config
 │   └── test/                   # Tests
 ├── pom.xml                     # Maven configuration
 ├── Dockerfile                  # Docker image

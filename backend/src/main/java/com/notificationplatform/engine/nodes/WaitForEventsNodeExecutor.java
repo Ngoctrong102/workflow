@@ -7,7 +7,6 @@ import com.notificationplatform.engine.NodeExecutionResult;
 import com.notificationplatform.engine.NodeExecutor;
 import com.notificationplatform.entity.ExecutionWaitState;
 import com.notificationplatform.service.eventaggregation.EventAggregationService;
-import com.notificationplatform.service.template.TemplateRenderer;
 
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,16 +27,13 @@ import lombok.extern.slf4j.Slf4j;
 public class WaitForEventsNodeExecutor implements NodeExecutor {
 
     private final EventAggregationService eventAggregationService;
-    private final TemplateRenderer templateRenderer;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
     public WaitForEventsNodeExecutor(EventAggregationService eventAggregationService,
-                                    TemplateRenderer templateRenderer,
                                     @Autowired(required = false) RestTemplate restTemplate,
                                     ObjectMapper objectMapper) {
         this.eventAggregationService = eventAggregationService;
-        this.templateRenderer = templateRenderer;
         this.restTemplate = restTemplate != null ? restTemplate : new RestTemplate();
         this.objectMapper = objectMapper;
     }
@@ -213,7 +209,7 @@ public class WaitForEventsNodeExecutor implements NodeExecutor {
                 for (Map.Entry<String, String> entry : apiCall.getHeaders().entrySet()) {
                     String headerValue = entry.getValue();
                     if (headerValue != null && headerValue.contains("{{")) {
-                        headerValue = templateRenderer.render(headerValue, variables);
+                        headerValue = renderSimpleTemplateHelper(headerValue, variables);
                     }
                     headers.set(entry.getKey(), headerValue);
                 }
@@ -233,7 +229,7 @@ public class WaitForEventsNodeExecutor implements NodeExecutor {
             // Render URL if it contains templates
             String url = apiCall.getUrl();
             if (url != null && url.contains("{{")) {
-                url = templateRenderer.render(url, variables);
+                url = renderSimpleTemplateHelper(url, variables);
             }
 
             // Create request entity
@@ -273,7 +269,7 @@ public class WaitForEventsNodeExecutor implements NodeExecutor {
             String bodyString = (String) body;
             if (bodyString.contains("{{")) {
                 // Render template
-                bodyString = templateRenderer.render(bodyString, variables);
+                bodyString = renderSimpleTemplateHelper(bodyString, variables);
             }
             
             // Try to parse as JSON and inject correlation data
@@ -330,7 +326,25 @@ public class WaitForEventsNodeExecutor implements NodeExecutor {
 
     @Override
     public com.notificationplatform.entity.enums.NodeType getNodeType() {
-        return com.notificationplatform.entity.enums.NodeType.WAIT_EVENTS;
+        // Wait for Events is a logic node subtype, not a separate node type
+        return com.notificationplatform.entity.enums.NodeType.LOGIC;
+    }
+    
+    /**
+     * Simple template rendering helper - replaces @{variable} placeholders
+     */
+    private String renderSimpleTemplateHelper(String template, Map<String, Object> variables) {
+        if (template == null || variables == null || variables.isEmpty()) {
+            return template;
+        }
+        
+        String result = template;
+        for (Map.Entry<String, Object> entry : variables.entrySet()) {
+            String placeholder = "@{" + entry.getKey() + "}";
+            String value = entry.getValue() != null ? entry.getValue().toString() : "";
+            result = result.replace(placeholder, value);
+        }
+        return result;
     }
 }
 

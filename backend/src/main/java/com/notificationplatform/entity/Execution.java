@@ -21,8 +21,8 @@ import java.util.Map;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = {"workflow", "trigger", "nodeExecutions", "notifications"})
-@EqualsAndHashCode(exclude = {"workflow", "trigger", "nodeExecutions", "notifications"})
+@ToString(exclude = {"workflow", "trigger", "nodeExecutions"})
+@EqualsAndHashCode(exclude = {"workflow", "trigger", "nodeExecutions"})
 public class Execution {
 
     @Id
@@ -100,9 +100,6 @@ public class Execution {
     // Relationships
     @OneToMany(mappedBy = "execution", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<NodeExecution> nodeExecutions = new ArrayList<>();
-
-    @OneToMany(mappedBy = "execution")
-    private List<Notification> notifications = new ArrayList<>();
 
     @OneToMany(mappedBy = "execution", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<RetrySchedule> retrySchedules = new ArrayList<>();

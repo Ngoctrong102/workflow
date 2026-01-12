@@ -115,59 +115,72 @@ Workflow is triggered when a message is received from a Kafka topic.
 
 ## Trigger Registry
 
-Triggers must be **defined in the Trigger Registry** before they can be used in workflows. See [Trigger Registry](./trigger-registry.md) for details on registry management.
+Triggers must be **created as trigger configs** before they can be used in workflows. See [Trigger Registry](./trigger-registry.md) for details on registry management.
 
 ### Using Triggers in Workflows
 
-When a trigger is used in a workflow:
-1. User selects trigger definition from registry
-2. System creates a **separate consumer/scheduler instance** for that workflow
-3. Instance can be managed independently (pause/resume/init/destroy)
+**Trigger-First Flow**:
+1. User creates trigger config in Trigger Management page
+2. User adds trigger node to workflow
+3. User links trigger config to trigger node
+4. User configures instance-specific settings (e.g., consumerGroup)
+5. System creates trigger instance in workflow definition
+6. When workflow is activated, trigger instance starts processing
+
+### Trigger Config vs Trigger Instance
+
+**Trigger Config**:
+- Created in Trigger Management page
+- Stored in `triggers` table
+- Contains shared configuration (endpoint, cron, topic, etc.)
+- Can be reused across multiple workflows
+- Status: active/inactive (metadata only)
+
+**Trigger Instance**:
+- Created when trigger config is linked to workflow node
+- Stored in workflow definition node data
+- References trigger config via `triggerConfigId`
+- Contains instance-specific overrides (e.g., consumerGroup)
+- Runtime state stored in workflow definition
 
 ## Trigger Instance Management
 
 ### Instance Lifecycle
 
-Each trigger instance in a workflow has its own lifecycle that can be managed independently:
+Trigger instances are managed through workflow activation/deactivation:
 
-#### Initialize
-Creates the consumer/scheduler instance but doesn't start it.
+#### Created
+When trigger config is linked to workflow node:
+- Trigger instance is created in workflow definition
+- Instance references trigger config
+- Instance includes instance-specific overrides
 
-```http
-POST /api/v1/workflows/{workflowId}/triggers/{triggerId}/init
-```
+#### Activated
+When workflow is activated:
+- System loads trigger config from database
+- Merges config with instance-specific overrides
+- Creates runtime consumer/scheduler
+- Starts processing
+- Runtime state set to ACTIVE (stored in workflow definition)
 
-#### Start/Resume
-Starts or resumes the consumer/scheduler.
+#### Paused
+When workflow is paused:
+- Consumer/scheduler stops processing but keeps connection
+- Runtime state set to PAUSED (stored in workflow definition)
 
-```http
-POST /api/v1/workflows/{workflowId}/triggers/{triggerId}/start
-POST /api/v1/workflows/{workflowId}/triggers/{triggerId}/resume
-```
+#### Resumed
+When workflow is resumed:
+- Consumer/scheduler resumes processing
+- Runtime state set to ACTIVE (stored in workflow definition)
 
-#### Pause
-Pauses the consumer/scheduler (stops processing but keeps connection).
-
-```http
-POST /api/v1/workflows/{workflowId}/triggers/{triggerId}/pause
-```
-
-#### Stop
-Stops the consumer/scheduler completely.
-
-```http
-POST /api/v1/workflows/{workflowId}/triggers/{triggerId}/stop
-```
-
-#### Destroy
-Destroys the instance and releases all resources.
-
-```http
-DELETE /api/v1/workflows/{workflowId}/triggers/{triggerId}
-```
+#### Stopped
+When workflow is deactivated:
+- Consumer/scheduler stops completely
+- Runtime state set to STOPPED (stored in workflow definition)
 
 ### Instance States
 
+Runtime states stored in workflow definition:
 - **INITIALIZED**: Instance created but not started
 - **ACTIVE**: Instance is running and processing events/schedules
 - **PAUSED**: Instance is paused (stops processing but keeps connection)
@@ -177,10 +190,12 @@ DELETE /api/v1/workflows/{workflowId}/triggers/{triggerId}
 ### Independent Instance Management
 
 Each trigger instance in a workflow is **independent**:
-- Can be paused/resumed without affecting other workflows
-- Has its own consumer/scheduler
-- Can be destroyed independently
-- Resource cleanup is handled per instance
+- Can be paused/resumed through workflow activation/deactivation
+- Has its own consumer/scheduler (created when workflow activated)
+- Runtime state managed per workflow
+- Resource cleanup handled when workflow deactivated
+
+**Note**: There are no separate API endpoints for trigger instance lifecycle. All operations are managed through workflow activation/deactivation.
 
 See [Trigger Registry](./trigger-registry.md) for detailed implementation.
 

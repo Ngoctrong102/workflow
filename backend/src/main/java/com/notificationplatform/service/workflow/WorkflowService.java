@@ -6,6 +6,7 @@ import com.notificationplatform.dto.request.UpdateWorkflowRequest;
 import com.notificationplatform.dto.response.ExecutionResponse;
 import com.notificationplatform.dto.response.PagedResponse;
 import com.notificationplatform.dto.response.WorkflowResponse;
+import com.notificationplatform.dto.response.WorkflowTriggerResponse;
 
 import java.util.List;
 
@@ -38,5 +39,15 @@ public interface WorkflowService {
     WorkflowResponse resumeWorkflow(String id);
 
     WorkflowResponse rollbackWorkflow(String id, Integer version);
+
+    /**
+     * Get trigger instances for a workflow.
+     * Reads workflow definition, extracts trigger nodes, loads trigger configs,
+     * and merges with instance-specific overrides.
+     * 
+     * @param workflowId Workflow ID
+     * @return List of trigger instances with configs and runtime states
+     */
+    List<WorkflowTriggerResponse> getWorkflowTriggers(String workflowId);
 }
 

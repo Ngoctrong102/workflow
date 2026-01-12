@@ -16,11 +16,15 @@ import lombok.extern.slf4j.Slf4j;
  * This controller handles requests to trigger paths defined by users.
  * Routes requests to appropriate trigger handler based on endpoint path.
  * 
+ * Note: This controller has lower priority than TriggerController
+ * to ensure /triggers endpoints are matched before /trigger/** wildcard.
+ * 
  * See: @import(features/triggers.md#1-api-call-trigger)
  */
 @Slf4j
 @RestController
 @RequestMapping("/trigger")
+@org.springframework.core.annotation.Order(2) // Lower priority than TriggerController
 public class ApiTriggerController {
 
     private final ApiTriggerHandler apiTriggerHandler;

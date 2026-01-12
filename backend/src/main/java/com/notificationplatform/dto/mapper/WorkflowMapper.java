@@ -33,9 +33,7 @@ public interface WorkflowMapper {
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "deletedAt", ignore = true)
-    @Mapping(target = "triggers", ignore = true)
     @Mapping(target = "executions", ignore = true)
-    @Mapping(target = "notifications", ignore = true)
     Workflow toEntity(CreateWorkflowRequest request);
 
     /**
@@ -48,9 +46,7 @@ public interface WorkflowMapper {
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "deletedAt", ignore = true)
-    @Mapping(target = "triggers", ignore = true)
     @Mapping(target = "executions", ignore = true)
-    @Mapping(target = "notifications", ignore = true)
     void updateEntity(@MappingTarget Workflow workflow, UpdateWorkflowRequest request);
 
     /**

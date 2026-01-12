@@ -7,7 +7,6 @@ import { ValidationErrors } from "@/components/workflow/ValidationErrors"
 import { PreviewMode } from "@/components/workflow/PreviewMode"
 import { TestExecution } from "@/components/workflow/TestExecution"
 import { FieldReferenceProvider } from "@/providers/FieldReferenceContext"
-import { useObjectTypes } from "@/hooks/use-object-types"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,16 +20,21 @@ import type { Node, Edge, Connection, NodeChange, EdgeChange } from "reactflow"
 import { applyNodeChanges, applyEdgeChanges } from "reactflow"
 import { useWorkflowStore } from "@/store/workflow-store"
 import { useUIStore } from "@/store/ui-store"
-import { validateConnection, validateWorkflow, validateWorkflowWithFieldReferences } from "@/utils/workflow-validation"
+import { validateConnection, validateWorkflow } from "@/utils/workflow-validation"
 import { normalizeWorkflowDefinition, validateWorkflowDefinition } from "@/utils/node-type-utils"
-import { useCreateWorkflow, useUpdateWorkflow, useWorkflow, useExecuteWorkflow, useWorkflowVersions, useWorkflowByVersion, useRollbackWorkflow } from "@/hooks/use-workflows"
+import { useCreateWorkflow, useUpdateWorkflow, useWorkflow, useExecuteWorkflow, useWorkflowByVersion } from "@/hooks/use-workflows"
 import { copyNodes, pasteNodes, storeCopiedNodes, getCopiedNodes } from "@/utils/node-copy-paste"
-import { createGroup } from "@/utils/node-grouping"
-import type { WorkflowDefinition, WorkflowNodeType } from "@/types/workflow"
-import type { NodeGroup } from "@/utils/node-grouping"
-import { Eye, Play, CheckCircle2, ChevronLeft, ChevronRight, X, AlertCircle, History, Clock, BarChart3, Undo2, Redo2, Copy, Clipboard, Group, Save, Trash2, Maximize2 } from "lucide-react"
+import type { WorkflowDefinition } from "@/types/workflow"
+import { NodeTypeEnum } from "@/types/workflow"
+import { Eye, Play, CheckCircle2, ChevronLeft, ChevronRight, AlertCircle, Undo2, Redo2, Copy, Trash2, Maximize2 } from "lucide-react"
 
 type ViewMode = "build" | "preview" | "test"
+
+function toggleViewMode(current: ViewMode): ViewMode {
+  if (current === "preview") return "build"
+  if (current === "build") return "preview"
+  return "build" // default for "test"
+}
 
 export default function WorkflowBuilder() {
   const { id } = useParams()
@@ -84,9 +88,9 @@ export default function WorkflowBuilder() {
   const [showWorkflowDetails, setShowWorkflowDetails] = useState(true)
   const [showValidationErrors, setShowValidationErrors] = useState(false) // Don't show validation errors by default
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
-  const [showVersionHistory, setShowVersionHistory] = useState(false)
+  // const [showVersionHistory, setShowVersionHistory] = useState(false) // TODO: Implement version history UI
   const [copiedNodes, setCopiedNodes] = useState<ReturnType<typeof copyNodes> | null>(null)
-  const [nodeGroups, setNodeGroups] = useState<NodeGroup[]>([])
+  // const [nodeGroups, setNodeGroups] = useState<NodeGroup[]>([]) // TODO: Implement node grouping
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false)
   const [templateName, setTemplateName] = useState("")
   const [templateDescription, setTemplateDescription] = useState("")
@@ -96,12 +100,12 @@ export default function WorkflowBuilder() {
 
   // Load workflow if editing
   const { data: workflow, isLoading: isLoadingWorkflow } = useWorkflow(id)
-  const { data: versions, isLoading: isLoadingVersions, error: versionsError } = useWorkflowVersions(id)
+  // const { data: versions, isLoading: isLoadingVersions } = useWorkflowVersions(id) // TODO: Use versions for version history
   const { data: versionWorkflow, isLoading: isLoadingVersion, error: versionError } = useWorkflowByVersion(id, selectedVersion || undefined)
   const createWorkflow = useCreateWorkflow()
   const updateWorkflow = useUpdateWorkflow()
   const executeWorkflow = useExecuteWorkflow()
-  const rollbackWorkflow = useRollbackWorkflow()
+  // const rollbackWorkflow = useRollbackWorkflow() // TODO: Implement rollback functionality
 
   // Reset workflow state when creating a new workflow (only when id changes to "new")
   useEffect(() => {
@@ -147,16 +151,8 @@ export default function WorkflowBuilder() {
     }
   }, [workflow?.name, workflowName])
 
-  // Load object types for field reference context
-  const { data: objectTypesData } = useObjectTypes({ limit: 1000 })
-  const objectTypesForContext = useMemo(() => {
-    if (!objectTypesData?.data) return []
-    return objectTypesData.data.map((ot) => ({
-      id: ot.id,
-      name: ot.name,
-      fields: ot.fields || [],
-    }))
-  }, [objectTypesData])
+  // Object types are no longer needed - using schemas from registry instead
+  const objectTypesForContext = useMemo(() => [], [])
 
   // Load workflow data when editing
   useEffect(() => {
@@ -290,7 +286,7 @@ export default function WorkflowBuilder() {
       setNodes(updatedNodes)
 
       // Handle node selection - process all changes together to avoid toggle
-      // First, find if any node is being selected
+      // First, find if any node is being selected or added
       let newlySelectedNodeId: string | null = null
       let isDeselectingCurrentNode = false
       
@@ -303,6 +299,10 @@ export default function WorkflowBuilder() {
             // The currently selected node is being deselected
             isDeselectingCurrentNode = true
           }
+        } else if (change.type === "add") {
+          // When a node is added (e.g., via drag and drop), automatically select it
+          // This ensures PropertiesPanel can render immediately
+          newlySelectedNodeId = change.item.id
         }
       })
       
@@ -337,9 +337,11 @@ export default function WorkflowBuilder() {
         }
         return nds.concat(newNode)
       })
+      // Automatically select the newly added node so PropertiesPanel can render
+      setSelectedNodeId(newNode.id)
       saveSnapshot()
     },
-    [setNodes, saveSnapshot]
+    [setNodes, setSelectedNodeId, saveSnapshot]
   )
 
   // Undo/Redo handlers
@@ -401,23 +403,12 @@ export default function WorkflowBuilder() {
   }, [selectedNodeId, nodes, edges, setNodes, setEdges, setSelectedNodeId, saveSnapshot, toast])
 
   // Fullscreen handler
-  const [isFullscreen, setIsFullscreen] = useState(false)
   const handleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen()
-      setIsFullscreen(true)
     } else {
       document.exitFullscreen()
-      setIsFullscreen(false)
     }
-  }, [])
-
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement)
-    }
-    document.addEventListener("fullscreenchange", handleFullscreenChange)
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange)
   }, [])
 
   const handlePaste = useCallback(() => {
@@ -441,24 +432,24 @@ export default function WorkflowBuilder() {
   }, [copiedNodes, nodes, edges, setNodes, setEdges, saveSnapshot, toast])
 
   // Group handlers
-  const handleCreateGroup = useCallback(() => {
-    if (!selectedNodeId) {
-      toast({
-        variant: "destructive",
-        title: "No Selection",
-        description: "Please select nodes to group",
-      })
-      return
-    }
-    const group = createGroup([selectedNodeId], nodes)
-    if (group) {
-      setNodeGroups([...nodeGroups, group])
-      toast({
-        title: "Group Created",
-        description: "Nodes grouped successfully",
-      })
-    }
-  }, [nodes, selectedNodeId, nodeGroups, toast])
+  // const handleCreateGroup = useCallback(() => {
+  //   if (!selectedNodeId) {
+  //     toast({
+  //       variant: "destructive",
+  //       title: "No Selection",
+  //       description: "Please select nodes to group",
+  //     })
+  //     return
+  //   }
+  //   const group = createGroup([selectedNodeId], nodes)
+  //   if (group) {
+  //     setNodeGroups([...nodeGroups, group])
+  //     toast({
+  //       title: "Group Created",
+  //       description: "Nodes grouped successfully",
+  //     })
+  //   }
+  // }, [nodes, selectedNodeId, nodeGroups, toast]) // TODO: Implement group functionality
 
   // Save as template handler
   const handleSaveAsTemplate = useCallback(async () => {
@@ -476,7 +467,7 @@ export default function WorkflowBuilder() {
         name: workflowName || templateName,
         description: templateDescription || workflowDescription,
         nodes: nodes.map((node) => {
-          const nodeData = node.data as { type: WorkflowNodeType; label: string; config?: Record<string, unknown> }
+          const nodeData = node.data as { type: NodeTypeEnum; label: string; config?: Record<string, unknown> }
           return {
             id: node.id,
             type: nodeData.type,
@@ -618,10 +609,74 @@ export default function WorkflowBuilder() {
   )
 
   const handleNodeSave = useCallback(
-    (nodeId: string, config: Record<string, unknown>) => {
-      updateNode(nodeId, { config, label: config.label as string })
+    (nodeId: string, data: Record<string, unknown>) => {
+      // CRITICAL: Flatten and clean config to prevent nested structures
+      // Backend expects triggerConfigId at node.data.config.triggerConfigId (top level)
+      // Remove any nested config.config structure completely
+      
+      const node = nodes.find((n) => n.id === nodeId)
+      const existingConfig = (node?.data as any)?.config || {}
+      
+      // Helper function to recursively flatten config (remove nested config.config)
+      const flattenConfig = (config: Record<string, unknown>): Record<string, unknown> => {
+        const flattened: Record<string, unknown> = {}
+        
+        for (const [key, value] of Object.entries(config)) {
+          if (key === 'config' && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+            // Found nested config - flatten it into top level
+            const nested = value as Record<string, unknown>
+            // Recursively flatten nested config (in case of config.config.config)
+            const flattenedNested = flattenConfig(nested)
+            Object.assign(flattened, flattenedNested)
+          } else {
+            // Regular field - keep as is
+            flattened[key] = value
+          }
+        }
+        
+        return flattened
+      }
+      
+      // Extract config from data (may be at data.config or just data)
+      let configToSave = (data.config || data) as Record<string, unknown>
+      
+      // CRITICAL: Preserve registryId and triggerConfigId before flattening
+      // These are required by backend and must not be lost
+      const preservedRegistryId = (configToSave.registryId || existingConfig.registryId) as string | undefined
+      const preservedTriggerConfigId = (configToSave.triggerConfigId || existingConfig.triggerConfigId) as string | undefined
+      
+      // Flatten any nested config structures
+      configToSave = flattenConfig(configToSave)
+      
+      // Flatten existing config if it has nested structure
+      const flattenedExisting = flattenConfig(existingConfig)
+      
+      // Merge: existing flattened config + new flattened config (new takes precedence)
+      const finalConfig = { ...flattenedExisting, ...configToSave }
+      
+      // Final pass: ensure no nested config remains
+      const cleanedConfig = flattenConfig(finalConfig)
+      
+      // CRITICAL: Remove metadata fields that shouldn't be in config
+      // These fields are stored elsewhere or are temporary
+      // BUT preserve registryId and triggerConfigId (required by backend)
+      const { configTemplate, objectTypeId, label: configLabel, ...configWithoutMetadata } = cleanedConfig
+      
+      // CRITICAL: Ensure registryId and triggerConfigId are preserved
+      if (preservedRegistryId) {
+        configWithoutMetadata.registryId = preservedRegistryId
+      }
+      if (preservedTriggerConfigId) {
+        configWithoutMetadata.triggerConfigId = preservedTriggerConfigId
+      }
+      
+      // Update node with cleaned, flattened config (only one level, no nesting, no metadata)
+      updateNode(nodeId, { 
+        config: configWithoutMetadata, 
+        label: (data.label as string) || (configLabel as string) || node?.data.label 
+      })
     },
-    [updateNode]
+    [updateNode, nodes]
   )
 
   const handleNodeCancel = useCallback(() => {
@@ -639,25 +694,8 @@ export default function WorkflowBuilder() {
       return
     }
 
-    // Use field reference validation if object types are available
-    let validation
-    if (objectTypesForContext.length > 0) {
-      const objectTypesMap = new Map()
-      objectTypesForContext.forEach((ot) => {
-        objectTypesMap.set(ot.id, {
-          name: ot.name,
-          fields: ot.fields || [],
-        })
-      })
-      
-      validation = validateWorkflowWithFieldReferences(nodes, edges, {
-        objectTypes: objectTypesMap,
-        validateTypes: true,
-        allowOldFormat: true,
-      })
-    } else {
-      validation = validateWorkflow(nodes, edges)
-    }
+    // Validate workflow (object types no longer used - using schemas from registry instead)
+    const validation = validateWorkflow(nodes, edges)
     
     setValidationErrors(validation.errors)
     setShowValidationErrors(true) // Show validation errors panel when validate is clicked
@@ -688,7 +726,7 @@ export default function WorkflowBuilder() {
         description: `Workflow has ${warningCount} warning(s) but is valid`,
       })
     }
-  }, [nodes, edges, objectTypesForContext, toast])
+  }, [nodes, edges, toast])
 
   const handleSave = useCallback(async () => {
     // Ensure nodes and edges are arrays
@@ -701,27 +739,8 @@ export default function WorkflowBuilder() {
       return
     }
 
-    // Validate workflow with field references if object types are available
-    let validation
-    if (objectTypesForContext.length > 0) {
-      // Convert object types to Map format for validation
-      const objectTypesMap = new Map()
-      objectTypesForContext.forEach((ot) => {
-        objectTypesMap.set(ot.id, {
-          name: ot.name,
-          fields: ot.fields || [],
-        })
-      })
-      
-      validation = validateWorkflowWithFieldReferences(nodes, edges, {
-        objectTypes: objectTypesMap,
-        validateTypes: true,
-        allowOldFormat: true, // Allow old format during transition
-      })
-    } else {
-      // Fallback to basic validation if no object types available
-      validation = validateWorkflow(nodes, edges)
-    }
+    // Validate workflow (object types no longer used - using schemas from registry instead)
+    const validation = validateWorkflow(nodes, edges)
     
     setValidationErrors(validation.errors)
     
@@ -747,11 +766,21 @@ export default function WorkflowBuilder() {
       })
     }
 
+    // Validate workflow name is required
+    if (!workflowName || workflowName.trim() === "") {
+      toast({
+        variant: "destructive",
+        title: "Workflow Name Required",
+        description: "Please enter a workflow name before saving",
+      })
+      return
+    }
+
     const workflowDefinition: WorkflowDefinition = {
-      name: workflowName,
+      name: workflowName.trim(),
       description: workflowDescription,
       nodes: nodes.map((node) => {
-        const nodeData = node.data as { type: WorkflowNodeType; label: string; config?: Record<string, unknown> }
+        const nodeData = node.data as { type: NodeTypeEnum; label: string; config?: Record<string, unknown> }
         return {
           id: node.id,
           type: nodeData.type,
@@ -886,166 +915,6 @@ export default function WorkflowBuilder() {
   return (
     <FieldReferenceProvider initialObjectTypes={objectTypesForContext}>
       <div className="h-full w-full">
-      {/* Toolbar - Horizontal, Top Center, Following Design */}
-      {showWorkflowDetails && (
-        <div 
-          className={cn(
-            "fixed top-4 left-1/2 -translate-x-1/2 z-[60] transition-all duration-300 ease-in-out",
-            showPropertiesPanel 
-              ? "right-[calc(18rem+0.5rem)] md:right-[calc(20rem+0.5rem)] left-auto translate-x-0" 
-              : ""
-          )}
-        >
-          <Card className="p-2 shadow-lg bg-white/95 backdrop-blur-sm border border-secondary-200">
-            <div className="flex items-center gap-1.5">
-              {/* Status Dropdown */}
-              <Select value={workflowStatus} onValueChange={(value) => setWorkflowStatus(value as "draft" | "active" | "inactive" | "paused" | "archived")}>
-                <SelectTrigger className="h-8 px-3 text-sm font-medium text-secondary-700 border-secondary-300 hover:bg-secondary-50 cursor-pointer transition-colors">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="draft">Draft</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                  <SelectItem value="paused">Paused</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              {/* Divider */}
-              <div className="w-px h-6 bg-secondary-200 mx-0.5" />
-              
-              {/* Action Icons */}
-              <div className="flex items-center gap-1">
-                  {/* Preview */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer"
-                  onClick={() => setViewMode(viewMode === "preview" ? "build" : "preview")}
-                  title="Preview"
-                >
-                  <Eye className="h-4 w-4 text-secondary-700" />
-                </Button>
-                
-                {/* Run/Execute */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer"
-                  onClick={() => setShowTestDialog(true)}
-                  title="Run/Execute"
-                >
-                  <Play className="h-4 w-4 text-secondary-700" />
-                </Button>
-                
-                {/* Validate */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer"
-                  onClick={handleValidate}
-                  title="Validate"
-                >
-                  <CheckCircle2 className="h-4 w-4 text-secondary-700" />
-                </Button>
-                
-                {/* Undo */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer disabled:opacity-50"
-                  onClick={handleUndo}
-                  disabled={!canUndo()}
-                  title="Undo (Ctrl+Z)"
-                >
-                  <Undo2 className="h-4 w-4 text-secondary-700" />
-                </Button>
-                
-                {/* Redo */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer disabled:opacity-50"
-                  onClick={handleRedo}
-                  disabled={!canRedo()}
-                  title="Redo (Ctrl+Y)"
-                >
-                  <Redo2 className="h-4 w-4 text-secondary-700" />
-                </Button>
-                
-                {/* Copy */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer disabled:opacity-50"
-                  onClick={handleCopy}
-                  disabled={!selectedNodeId}
-                  title="Copy (Ctrl+C)"
-                >
-                  <Copy className="h-4 w-4 text-secondary-700" />
-                </Button>
-                
-                {/* Delete */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 hover:bg-error-50 transition-colors cursor-pointer disabled:opacity-50"
-                  onClick={handleDelete}
-                  disabled={!selectedNodeId}
-                  title="Delete"
-                >
-                  <Trash2 className="h-4 w-4 text-error-600" />
-                </Button>
-                
-                {/* Fullscreen */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer"
-                  onClick={handleFullscreen}
-                  title="Fullscreen"
-                >
-                  <Maximize2 className="h-4 w-4 text-secondary-700" />
-                </Button>
-              </div>
-              
-              {/* Divider */}
-              <div className="w-px h-6 bg-secondary-200 mx-0.5" />
-              
-              {/* Save Button - Primary */}
-              <Button
-                size="sm"
-                className="h-8 px-4 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={handleSave}
-                disabled={!isDirty || (selectedVersion !== null && selectedVersion !== workflow?.version)}
-                title={selectedVersion !== null && selectedVersion !== workflow?.version ? "Cannot save when viewing an old version" : undefined}
-              >
-                Save
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Toggle Workflow Details Button (When Hidden), Responsive, Adjusts when Properties Panel is open */}
-      {!showWorkflowDetails && (
-        <Button
-          variant="default"
-          size="sm"
-          className={cn(
-            "fixed top-16 sm:top-20 z-[60] h-8 w-8 p-0 shadow-lg cursor-pointer transition-all duration-300 ease-in-out",
-            showPropertiesPanel 
-              ? "right-[calc(18rem+0.5rem)] md:right-[calc(20rem+0.5rem)]" 
-              : "right-2 sm:right-4"
-          )}
-          onClick={() => setShowWorkflowDetails(true)}
-          title="Show workflow details"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-      )}
-
-
       {/* Builder Layout */}
       {viewMode === "preview" ? (
         <div className="h-full w-full">
@@ -1061,6 +930,176 @@ export default function WorkflowBuilder() {
         </div>
       ) : (
         <div className="relative h-full w-full overflow-hidden canvas-container">
+          {/* Toolbar - Inside Canvas, Top Center */}
+          {showWorkflowDetails && (
+            <div 
+              className={cn(
+                "absolute top-4 left-1/2 -translate-x-1/2 z-[60] transition-all duration-300 ease-in-out",
+                showPropertiesPanel 
+                  ? "right-[calc(18rem+0.5rem)] md:right-[calc(20rem+0.5rem)] left-auto translate-x-0" 
+                  : ""
+              )}
+            >
+              <Card className="p-2 shadow-lg bg-white/95 backdrop-blur-sm border border-secondary-200">
+                <div className="flex items-center gap-1.5">
+                  {/* Workflow Name Input */}
+                  <Input
+                    value={localWorkflowName}
+                    onChange={(e) => {
+                      setLocalWorkflowName(e.target.value)
+                      setWorkflowName(e.target.value)
+                    }}
+                    placeholder="Workflow Name"
+                    className="h-8 px-3 text-sm font-medium text-secondary-900 border-secondary-300 hover:border-secondary-400 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 min-w-[200px] max-w-[300px]"
+                    required
+                  />
+                  
+                  {/* Divider */}
+                  <div className="w-px h-6 bg-secondary-200 mx-0.5" />
+                  
+                  {/* Status Dropdown */}
+                  <Select value={workflowStatus} onValueChange={(value) => setWorkflowStatus(value as "draft" | "active" | "inactive" | "paused" | "archived")}>
+                    <SelectTrigger className="h-8 px-3 text-sm font-medium text-secondary-700 border-secondary-300 hover:bg-secondary-50 cursor-pointer transition-colors">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="paused">Paused</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  
+                  {/* Divider */}
+                  <div className="w-px h-6 bg-secondary-200 mx-0.5" />
+                  
+                  {/* Action Icons */}
+                  <div className="flex items-center gap-1">
+                    {/* Preview */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer"
+                      onClick={() => setViewMode(toggleViewMode(viewMode))}
+                      title="Preview"
+                    >
+                      <Eye className="h-4 w-4 text-secondary-700" />
+                    </Button>
+                    
+                    {/* Run/Execute */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer"
+                      onClick={() => setShowTestDialog(true)}
+                      title="Run/Execute"
+                    >
+                      <Play className="h-4 w-4 text-secondary-700" />
+                    </Button>
+                    
+                    {/* Validate */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer"
+                      onClick={handleValidate}
+                      title="Validate"
+                    >
+                      <CheckCircle2 className="h-4 w-4 text-secondary-700" />
+                    </Button>
+                    
+                    {/* Undo */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer disabled:opacity-50"
+                      onClick={handleUndo}
+                      disabled={!canUndo()}
+                      title="Undo (Ctrl+Z)"
+                    >
+                      <Undo2 className="h-4 w-4 text-secondary-700" />
+                    </Button>
+                    
+                    {/* Redo */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer disabled:opacity-50"
+                      onClick={handleRedo}
+                      disabled={!canRedo()}
+                      title="Redo (Ctrl+Y)"
+                    >
+                      <Redo2 className="h-4 w-4 text-secondary-700" />
+                    </Button>
+                    
+                    {/* Copy */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer disabled:opacity-50"
+                      onClick={handleCopy}
+                      disabled={!selectedNodeId}
+                      title="Copy (Ctrl+C)"
+                    >
+                      <Copy className="h-4 w-4 text-secondary-700" />
+                    </Button>
+                    
+                    {/* Delete */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 hover:bg-error-50 transition-colors cursor-pointer disabled:opacity-50"
+                      onClick={handleDelete}
+                      disabled={!selectedNodeId}
+                      title="Delete"
+                    >
+                      <Trash2 className="h-4 w-4 text-error-600" />
+                    </Button>
+                    
+                    {/* Fullscreen */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 hover:bg-secondary-100 transition-colors cursor-pointer"
+                      onClick={handleFullscreen}
+                      title="Fullscreen"
+                    >
+                      <Maximize2 className="h-4 w-4 text-secondary-700" />
+                    </Button>
+                  </div>
+                  
+                  {/* Divider */}
+                  <div className="w-px h-6 bg-secondary-200 mx-0.5" />
+                  
+                  {/* Save Button - Primary */}
+                  <Button
+                    size="sm"
+                    className="h-8 px-4 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={handleSave}
+                    disabled={!isDirty || (selectedVersion !== null && selectedVersion !== workflow?.version)}
+                    title={selectedVersion !== null && selectedVersion !== workflow?.version ? "Cannot save when viewing an old version" : undefined}
+                  >
+                    Save
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* Toggle Toolbar Button (When Hidden) - Inside Canvas */}
+          {!showWorkflowDetails && (
+            <Button
+              variant="default"
+              size="sm"
+              className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] h-8 px-3 shadow-lg cursor-pointer transition-all duration-300 ease-in-out bg-white hover:bg-secondary-50 border border-secondary-200"
+              onClick={() => setShowWorkflowDetails(true)}
+              title="Show toolbar"
+            >
+              <ChevronRight className="h-4 w-4 mr-1" />
+              <span className="text-sm">Toolbar</span>
+            </Button>
+          )}
+
           {/* Canvas - Always Full Width/Height, No Padding */}
           <div className="absolute inset-0 z-10" style={{ pointerEvents: 'auto' }}>
             <Card className="h-full border-0 shadow-none bg-white">

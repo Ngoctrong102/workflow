@@ -228,7 +228,7 @@ graph LR
 
 ### 2. Sử dụng trong Template (Action Nodes)
 
-Trong các action node (send_email, send_sms, send_webhook), bạn có thể sử dụng template syntax `{{...}}`:
+Trong các action node (send_email, send_sms, send_webhook), bạn có thể sử dụng **MVEL expression syntax `@{...}`**:
 
 **Ví dụ trong Send Email node với trigger data:**
 ```json
@@ -236,20 +236,20 @@ Trong các action node (send_email, send_sms, send_webhook), bạn có thể s�
   "type": "action",
   "data": {
     "subtype": "send_email",
-    "subject": "Welcome {{_nodeOutputs.apiTrigger.user.name}}",
-    "body": "Your user ID is {{_nodeOutputs.apiTrigger.userId}}"
+    "subject": "Welcome @{_trigger.user.name}!",
+    "body": "Your user ID is @{_trigger.userId}"
   }
 }
 ```
 
-**Ví dụ với nhiều trigger nodes:**
+**Ví dụ với previous node outputs:**
 ```json
 {
   "type": "action",
   "data": {
     "subtype": "send_email",
-    "subject": "Daily Report - {{_nodeOutputs.scheduleTrigger.date}}",
-    "body": "User {{_nodeOutputs.apiTrigger.userId}} was created"
+    "subject": "Daily Report - @{_trigger.date}",
+    "body": "User @{fetchUser.userId} was created"
   }
 }
 ```
@@ -263,12 +263,17 @@ Trong các action node (send_email, send_sms, send_webhook), bạn có thể s�
     "url": "https://api.example.com/users",
     "method": "POST",
     "body": {
-      "userId": "{{_nodeOutputs.nodeA.userId}}",
-      "userName": "{{_nodeOutputs.nodeA.user.name}}"
+      "userId": "@{fetchUser.userId}",
+      "userName": "@{fetchUser.user.name}"
     }
   }
 }
 ```
+
+**Note**: 
+- Old syntax `{{_nodeOutputs.nodeId.field}}` → New syntax `@{nodeId.field}`
+- Trigger data: `@{_trigger.field}` thay vì `{{_nodeOutputs.triggerId.field}}`
+- Previous node outputs: `@{nodeId.field}` thay vì `{{_nodeOutputs.nodeId.field}}`
 
 ### Template Rendering Flow
 
@@ -279,11 +284,11 @@ sequenceDiagram
     participant EC as ExecutionContext
     participant RESULT as Rendered Template
     
-    NODE->>TR: Render template with {{variables}}
-    TR->>EC: getDataForNode(nodeId)
-    EC-->>TR: Context data
-    TR->>TR: Parse {{_nodeOutputs.nodeA.userId}}
-    TR->>TR: Resolve nested path
+    NODE->>TR: Render template with @{MVEL expressions}
+    TR->>EC: Build execution context
+    EC-->>TR: Context data (nodes, trigger, vars)
+    TR->>TR: Parse @{fetchUser.userId}
+    TR->>TR: Evaluate MVEL expression
     TR->>TR: Replace with value
     TR-->>NODE: Rendered template
     NODE->>RESULT: Send notification
@@ -354,15 +359,15 @@ Trong data transformation nodes, bạn có thể map field từ node khác:
 }
 ```
 
-**Ví dụ Transform node:**
+**Ví dụ Transform node với MVEL:**
 ```json
 {
   "type": "data",
   "data": {
     "subtype": "transform",
     "transform": {
-      "fullName": "{{_nodeOutputs.nodeA.user.name}}",
-      "contact": "{{_nodeOutputs.nodeA.user.email}}"
+      "fullName": "@{nodeA.user.name}",
+      "contact": "@{nodeA.user.email}"
     }
   }
 }
@@ -370,19 +375,15 @@ Trong data transformation nodes, bạn có thể map field từ node khác:
 
 ### 5. Sử dụng trong Filter Node
 
-Trong filter node, bạn có thể filter dựa trên field từ node khác:
+Trong filter node, bạn có thể filter dựa trên field từ node khác sử dụng MVEL:
 
 ```json
 {
   "type": "data",
   "data": {
     "subtype": "filter",
-    "arrayField": "_nodeOutputs.nodeA.items",
-    "condition": {
-      "field": "status",
-      "operator": "equals",
-      "value": "{{_nodeOutputs.nodeB.status}}"
-    }
+    "arrayField": "nodeA.items",
+    "condition": "@{item.status} == @{nodeB.status}"
   }
 }
 ```
@@ -472,9 +473,9 @@ Biến global được lưu trong `variables` và cũng được merge vào cont
 // Set variable trong một node:
 context.setVariable("apiKey", "secret-key-123");
 
-// Sử dụng trong node khác:
+// Sử dụng trong node khác với MVEL:
 {
-  "url": "https://api.example.com?key={{apiKey}}"
+  "url": "https://api.example.com?key=@{_vars.apiKey}"
 }
 ```
 
@@ -485,7 +486,7 @@ graph LR
     NODE1[Node 1] --> SET[setVariable<br/>apiKey = 'secret']
     SET --> EC[ExecutionContext<br/>variables]
     EC --> NODE2[Node 2]
-    NODE2 --> USE[Use {{apiKey}}]
+    NODE2 --> USE[Use @{_vars.apiKey}]
     
     style SET fill:#e8f5e9
     style EC fill:#fff4e1
@@ -540,7 +541,7 @@ graph TB
 **Lưu ý:**
 - Mỗi trigger node phải có nodeId duy nhất
 - Trigger data được lưu riêng biệt theo trigger nodeId
-- Các node khác truy cập trigger data qua `_nodeOutputs.{triggerNodeId}`
+- Các node khác truy cập trigger data qua MVEL: `@{_trigger.field}` hoặc `@{triggerNodeId.field}` (nếu có nhiều triggers)
 - Khi workflow được trigger, chỉ trigger node tương ứng được thực thi
 
 ### 2. Thứ tự Thực thi
@@ -551,12 +552,12 @@ graph TB
     NODE1 --> NODE2[Node 2]
     NODE2 --> NODE3[Node 3]
     
-    NODE1 -.->|Can access via<br/>_nodeOutputs.apiTrigger| TRIGGER
-    NODE2 -.->|Can access via<br/>_nodeOutputs.apiTrigger| TRIGGER
-    NODE2 -.->|Can access via<br/>_nodeOutputs.node1| NODE1
-    NODE3 -.->|Can access via<br/>_nodeOutputs.apiTrigger| TRIGGER
-    NODE3 -.->|Can access via<br/>_nodeOutputs.node1| NODE1
-    NODE3 -.->|Can access via<br/>_nodeOutputs.node2| NODE2
+    NODE1 -.->|Can access via<br/>@{_trigger.field}| TRIGGER
+    NODE2 -.->|Can access via<br/>@{_trigger.field}| TRIGGER
+    NODE2 -.->|Can access via<br/>@{node1.field}| NODE1
+    NODE3 -.->|Can access via<br/>@{_trigger.field}| TRIGGER
+    NODE3 -.->|Can access via<br/>@{node1.field}| NODE1
+    NODE3 -.->|Can access via<br/>@{node2.field}| NODE2
     
     NODE1 -.->|Cannot access| NODE2
     NODE1 -.->|Cannot access| NODE3
@@ -602,18 +603,23 @@ graph TB
     style ITEMS fill:#f3e5f5
 ```
 
-### 4. Template Rendering
+### 4. MVEL Expression Rendering
 
-Template renderer hỗ trợ:
-- Simple variables: `{{variable}}`
-- Nested variables: `{{user.name}}`
-- Default values: `{{variable|default:value}}`
-- Format helpers: `{{date|format:YYYY-MM-DD}}`
+MVEL expression renderer hỗ trợ:
+- Simple variables: `@{variable}`
+- Nested variables: `@{user.name}`
+- Node outputs: `@{nodeId.field}`
+- Trigger data: `@{_trigger.field}`
+- Workflow variables: `@{_vars.varName}`
+- Built-in functions: `@{_now()}`, `@{_uuid()}`
+- Complex expressions: `@{user.firstName} + ' ' + @{user.lastName}`
+- Ternary operators: `@{user.age} >= 18 ? 'adult' : 'minor'`
 
 ### 5. Error Handling
 
-- Nếu field không tồn tại, giá trị sẽ là `null` hoặc empty string
-- Nên sử dụng default values trong template: `{{_nodeOutputs.nodeA.userId|default:unknown}}`
+- Nếu field không tồn tại, MVEL evaluation sẽ throw exception với detailed error message
+- Nên sử dụng null-safe operators: `@{user?.name ?: 'unknown'}`
+- Hoặc conditional expressions: `@{user.name != null ? user.name : 'unknown'}`
 
 ## Ví dụ Hoàn chỉnh
 
@@ -649,8 +655,8 @@ graph LR
       "data": {
         "subtype": "map",
         "mapping": {
-          "userId": "_nodeOutputs.apiTrigger.userId",
-          "userName": "_nodeOutputs.apiTrigger.name"
+          "userId": "@{_trigger.userId}",
+          "userName": "@{_trigger.name}"
         }
       }
     },
@@ -659,7 +665,8 @@ graph LR
       "type": "logic",
       "data": {
         "subtype": "condition",
-        "field": "_nodeOutputs.fetchUser.userId",
+        "field": "fetchUser.userId",
+        "condition": "@{fetchUser.userId} != null",
         "operator": "not_equals",
         "value": null,
         "branches": {
@@ -675,11 +682,11 @@ graph LR
         "subtype": "send_email",
         "recipients": [
           {
-            "email": "{{_nodeOutputs.fetchUser.userName}}@example.com"
+            "email": "@{fetchUser.userName}@example.com"
           }
         ],
-        "subject": "Welcome {{_nodeOutputs.fetchUser.userName}}!",
-        "body": "Your user ID is {{_nodeOutputs.fetchUser.userId}}"
+        "subject": "Welcome @{fetchUser.userName}!",
+        "body": "Your user ID is @{fetchUser.userId}"
       }
     }
   ],
@@ -730,7 +737,7 @@ sequenceDiagram
     WE->>EC: getDataForNode("sendEmail")
     EC-->>WE: {_nodeOutputs: {apiTrigger: {...}, fetchUser: {...}}}
     WE->>N3: Execute with data
-    N3->>N3: Render template: Welcome {{_nodeOutputs.fetchUser.userName}}!
+    N3->>N3: Evaluate MVEL: Welcome @{fetchUser.userName}!
     N3->>N3: Resolve: Welcome John!
     N3-->>WE: Email sent
 ```

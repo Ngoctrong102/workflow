@@ -42,10 +42,6 @@ public class Action {
     @NotNull
     private ActionType type;
 
-    @Column(name = "action_type", length = 50)
-    @Size(max = 50)
-    private String actionType; // For custom actions (send-email, send-sms, etc.)
-
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 

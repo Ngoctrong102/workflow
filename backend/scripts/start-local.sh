@@ -44,7 +44,7 @@ check_port() {
 
 # Check for port conflicts
 echo -e "${YELLOW}Checking for port conflicts...${NC}"
-PORTS=(5432 9092 5672 15672 2181)
+PORTS=(5432 9092 5672 15672 2181 6379)
 CONFLICTS=()
 
 for port in "${PORTS[@]}"; do
@@ -55,6 +55,7 @@ for port in "${PORTS[@]}"; do
             9092) container="notification-platform-kafka" ;;
             5672|15672) container="notification-platform-rabbitmq" ;;
             2181) container="notification-platform-zookeeper" ;;
+            6379) container="notification-platform-redis" ;;
             *) container="" ;;
         esac
         
@@ -70,7 +71,7 @@ if [ ${#CONFLICTS[@]} -gt 0 ]; then
 fi
 
 # Step 1: Start infrastructure services in Docker (without backend app)
-echo -e "\n${BLUE}[1/2] Starting infrastructure services in Docker (PostgreSQL, Kafka, RabbitMQ)...${NC}"
+echo -e "\n${BLUE}[1/2] Starting infrastructure services in Docker (PostgreSQL, Kafka, RabbitMQ, Redis)...${NC}"
 cd "$BACKEND_DIR"
 
 # Use docker compose (v2) or docker-compose (v1)
@@ -90,7 +91,7 @@ if $COMPOSE_CMD ps 2>/dev/null | grep -q "Up"; then
 fi
 
 # Start infrastructure services
-$COMPOSE_CMD up -d postgres zookeeper kafka rabbitmq
+$COMPOSE_CMD up -d postgres zookeeper kafka rabbitmq redis
 
 # Wait for services to be healthy
 echo -e "${YELLOW}Waiting for services to be ready...${NC}"
@@ -152,6 +153,22 @@ for i in {1..30}; do
     if [ $i -eq 30 ]; then
         echo -e " ${RED}✗${NC}"
         echo -e "${RED}RabbitMQ failed to start${NC}"
+        exit 1
+    fi
+    echo -n "."
+    sleep 1
+done
+
+# Wait for Redis
+echo -n "Waiting for Redis..."
+for i in {1..30}; do
+    if docker exec notification-platform-redis redis-cli ping > /dev/null 2>&1; then
+        echo -e " ${GREEN}✓${NC}"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo -e " ${RED}✗${NC}"
+        echo -e "${RED}Redis failed to start${NC}"
         exit 1
     fi
     echo -n "."
@@ -249,6 +266,7 @@ echo -e "  ${GREEN}✓${NC} PostgreSQL:     localhost:5432 (Docker)"
 echo -e "  ${GREEN}✓${NC} Kafka:          localhost:9092 (Docker)"
 echo -e "  ${GREEN}✓${NC} RabbitMQ:       localhost:5672 (Docker)"
 echo -e "  ${GREEN}✓${NC} RabbitMQ Mgmt:  http://localhost:15672 (Docker)"
+echo -e "  ${GREEN}✓${NC} Redis:          localhost:6379 (Docker)"
 echo -e "  ${GREEN}✓${NC} Backend API:    http://localhost:8080/api/v1 (Host - Hot Reload Enabled)"
 echo -e "  ${GREEN}✓${NC} Backend Health: http://localhost:8080/api/v1/actuator/health"
 echo -e "  ${GREEN}✓${NC} Swagger UI:     http://localhost:8080/api/v1/swagger-ui.html"

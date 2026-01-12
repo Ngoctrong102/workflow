@@ -3,10 +3,6 @@ package com.notificationplatform.service.trigger.api;
 import com.notificationplatform.dto.response.TriggerActivationResponse;
 import com.notificationplatform.entity.Trigger;
 import com.notificationplatform.entity.enums.TriggerStatus;
-import com.notificationplatform.engine.WorkflowExecutor;
-import com.notificationplatform.entity.Execution;
-import com.notificationplatform.entity.Workflow;
-import com.notificationplatform.repository.WorkflowRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,9 +22,11 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ApiTriggerHandler {
 
-    private final WorkflowRepository workflowRepository;
-    private final WorkflowExecutor workflowExecutor;
     private final TriggerEndpointRegistry endpointRegistry;
+    
+    // Note: Dependencies for finding workflows by trigger config need to be added
+    // private final WorkflowRepository workflowRepository;
+    // private final WorkflowExecutor workflowExecutor;
 
     /**
      * Handle HTTP request for API trigger.
@@ -68,32 +66,20 @@ public class ApiTriggerHandler {
         // Extract trigger data from request
         Map<String, Object> triggerData = extractTriggerData(requestBody, queryParams);
         
-        // Get workflow
-        Workflow workflow = trigger.getWorkflow();
-        if (workflow == null) {
-            throw new RuntimeException("Workflow not found for trigger: " + trigger.getId());
-        }
+        // Find workflow(s) using this trigger config
+        // Need to search workflow definitions for nodes with triggerConfigId = trigger.getId()
+        // This requires searching workflow definitions for triggerConfigId
+        throw new UnsupportedOperationException(
+            "ApiTriggerHandler.handleRequest() needs to find workflow(s) using trigger config. " +
+            "This requires searching workflow definitions for triggerConfigId. " +
+            "Will be implemented in a later sprint."
+        );
         
-        // Check if workflow is active
-        if (workflow.getStatus() != com.notificationplatform.entity.enums.WorkflowStatus.ACTIVE) {
-            log.warn("Workflow is not active: workflowId={}, status={}", workflow.getId(), workflow.getStatus());
-            throw new RuntimeException("Workflow is not active: " + workflow.getId());
-        }
-        
-        // Execute workflow
-        Execution execution = workflowExecutor.execute(workflow, triggerData, trigger.getId());
-        
-        // Build response
-        TriggerActivationResponse response = new TriggerActivationResponse();
-        response.setWorkflowId(workflow.getId());
-        response.setExecutionId(execution.getId());
-        response.setStatus("triggered");
-        response.setMessage("Workflow execution started");
-        
-        log.info("Workflow triggered via API: workflowId={}, executionId={}, triggerId={}", 
-                 workflow.getId(), execution.getId(), trigger.getId());
-        
-        return response;
+        // Future implementation:
+        // 1. Find all workflows that have trigger nodes with triggerConfigId = trigger.getId()
+        // 2. Filter to only active workflows
+        // 3. Execute each workflow (or first one if single execution mode)
+        // 4. Return response with workflowId and executionId
     }
 
     /**

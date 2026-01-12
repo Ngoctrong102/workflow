@@ -8,11 +8,12 @@ import { useForm, Controller } from "react-hook-form"
 import type { Trigger, TriggerType } from "@/types/trigger"
 
 interface TriggerEditorProps {
-  workflowId?: string
+  workflowId?: string // Optional, for backward compatibility
   triggerType: TriggerType
   trigger?: Trigger
-  onSave: (config: Record<string, unknown>) => void
+  onSave: (data: { name?: string; triggerType?: string; status?: string; config: Record<string, unknown> }) => void
   onCancel: () => void
+  showNameAndStatus?: boolean // Show name and status fields for trigger configs
 }
 
 export function TriggerEditor({
@@ -20,9 +21,12 @@ export function TriggerEditor({
   trigger,
   onSave,
   onCancel,
+  showNameAndStatus = false,
 }: TriggerEditorProps) {
   const { register, handleSubmit, control, formState: { errors } } = useForm<Record<string, unknown>>({
     defaultValues: {
+      name: (trigger as any)?.name || "",
+      status: (trigger as any)?.status || "active",
       ...getDefaultConfig(triggerType),
       ...(trigger?.config || {}),
       timezone: (trigger?.config as { timezone?: string })?.timezone || "UTC",
@@ -30,7 +34,12 @@ export function TriggerEditor({
   })
 
   const onSubmit = (data: Record<string, unknown>) => {
-    onSave(data)
+    // Extract name and status if showNameAndStatus is true
+    const { name, status, ...config } = data
+    onSave({
+      ...(showNameAndStatus ? { name: name as string, status: status as string } : {}),
+      config,
+    })
   }
 
   return (
@@ -43,6 +52,41 @@ export function TriggerEditor({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {/* Name and Status fields for trigger configs */}
+          {showNameAndStatus && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="name">Name *</Label>
+                <Input
+                  id="name"
+                  {...register("name", { required: "Name is required" })}
+                  placeholder="Enter trigger config name"
+                />
+                {errors.name && (
+                  <p className="text-sm text-error-600">{errors.name.message as string}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <Controller
+                  name="status"
+                  control={control}
+                  render={({ field }) => (
+                    <Select value={field.value as string} onValueChange={field.onChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+            </>
+          )}
+
           {triggerType === "api" && (
             <>
               <div className="space-y-2">

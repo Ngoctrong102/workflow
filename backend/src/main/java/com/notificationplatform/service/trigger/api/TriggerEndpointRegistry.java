@@ -64,8 +64,8 @@ public class TriggerEndpointRegistry {
             endpointMap.put(endpointPath, trigger);
             triggerToEndpointMap.put(trigger.getId(), endpointPath);
             
-            log.info("Registered trigger endpoint: endpointPath={}, triggerId={}, workflowId={}", 
-                     endpointPath, trigger.getId(), trigger.getWorkflow().getId());
+            log.info("Registered trigger endpoint: endpointPath={}, triggerId={}", 
+                     endpointPath, trigger.getId());
             
             return endpointPath;
         } finally {
@@ -125,7 +125,6 @@ public class TriggerEndpointRegistry {
     /**
      * Extract endpoint path from trigger configuration.
      */
-    @SuppressWarnings("unchecked")
     private String extractEndpointPath(Trigger trigger) {
         Map<String, Object> config = trigger.getConfig();
         if (config == null) {
@@ -134,8 +133,8 @@ public class TriggerEndpointRegistry {
         
         String endpointPath = (String) config.get("endpointPath");
         if (endpointPath == null || endpointPath.isEmpty()) {
-            // Default endpoint path: /api/v1/trigger/{workflowId}
-            endpointPath = "/api/v1/trigger/" + trigger.getWorkflow().getId();
+            // Default endpoint path: /trigger/{triggerId}
+            endpointPath = "/trigger/" + trigger.getId();
         }
         
         // Normalize path (remove trailing slash, ensure starts with /)

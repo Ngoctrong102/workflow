@@ -3,10 +3,11 @@ package com.notificationplatform.engine.nodes;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.notificationplatform.engine.ExecutionContext;
 import com.notificationplatform.engine.NodeExecutionResult;
-import com.notificationplatform.engine.NodeExecutor;
-import com.notificationplatform.entity.enums.NodeType;
+import com.notificationplatform.entity.Action;
+import com.notificationplatform.exception.ResourceNotFoundException;
 import com.notificationplatform.service.registry.ActionRegistryService;
-import com.notificationplatform.service.template.TemplateRenderer;
+import com.notificationplatform.service.workflow.ExecutionContextBuilder;
+import com.notificationplatform.util.MvelEvaluator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -22,15 +23,16 @@ import java.util.concurrent.CompletableFuture;
  * Executor for Publish Event Action node (Kafka).
  * Publishes messages to Kafka topics.
  * 
+ * This executor is called by ActionNodeExecutor for PUBLISH_EVENT action type.
+ * 
  * See: @import(features/node-types.md#publish-event-action-kafka)
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class PublishEventNodeExecutor implements NodeExecutor {
+public class PublishEventNodeExecutor implements ActionExecutor {
 
     private final KafkaTemplate<String, String> kafkaTemplate;
-    private final TemplateRenderer templateRenderer;
     private final ActionRegistryService actionRegistryService;
     private final ObjectMapper objectMapper;
 
@@ -45,14 +47,25 @@ public class PublishEventNodeExecutor implements NodeExecutor {
                 throw new IllegalArgumentException("Registry ID is required for publish event action");
             }
             
+            Action action;
             try {
-                actionRegistryService.getActionById(registryId);
-            } catch (com.notificationplatform.exception.ResourceNotFoundException e) {
+                action = actionRegistryService.getActionById(registryId);
+            } catch (ResourceNotFoundException e) {
                 throw new IllegalArgumentException("Action not found in registry: " + registryId);
             }
             
-            // Parse Kafka configuration
-            KafkaPublishConfig config = parseConfig(nodeData, context);
+            // Get config values (new structure) or parse from nodeData (backward compatibility)
+            Map<String, Object> configValues = getConfigValues(nodeData);
+            
+            // Build MVEL execution context
+            Map<String, Object> mvelContext = ExecutionContextBuilder.buildContext(context);
+            
+            // Evaluate MVEL expressions in config values
+            Map<String, Object> resolvedConfig = (Map<String, Object>) 
+                MvelEvaluator.evaluateObject(configValues, mvelContext);
+            
+            // Parse resolved config to KafkaPublishConfig
+            KafkaPublishConfig config = parseResolvedConfig(resolvedConfig);
             
             // Serialize message to JSON
             String messageJson = objectMapper.writeValueAsString(config.getMessage());
@@ -67,14 +80,19 @@ public class PublishEventNodeExecutor implements NodeExecutor {
             // Wait for result (synchronous for now)
             SendResult<String, String> result = future.get();
             
-            // Build output
-            Map<String, Object> output = new HashMap<>();
-            output.put("status", "success");
-            output.put("topic", config.getTopic());
-            output.put("key", config.getKey());
-            output.put("partition", result.getRecordMetadata().partition());
-            output.put("offset", result.getRecordMetadata().offset());
-            output.put("timestamp", result.getRecordMetadata().timestamp());
+            // Build raw response
+            Map<String, Object> rawResponse = new HashMap<>();
+            rawResponse.put("success", true);
+            rawResponse.put("topic", config.getTopic());
+            rawResponse.put("partition", result.getRecordMetadata().partition());
+            rawResponse.put("offset", result.getRecordMetadata().offset());
+            rawResponse.put("timestamp", result.getRecordMetadata().timestamp());
+            
+            // Build output context for output mapping
+            Map<String, Object> outputContext = ExecutionContextBuilder.buildOutputContext(context, rawResponse);
+            
+            // Apply output mapping (if available from action registry or node config)
+            Map<String, Object> output = applyOutputMapping(action, nodeData, outputContext, rawResponse);
             
             log.info("Message published to Kafka: topic={}, partition={}, offset={}", 
                      config.getTopic(), result.getRecordMetadata().partition(), 
@@ -94,85 +112,156 @@ public class PublishEventNodeExecutor implements NodeExecutor {
     }
 
     /**
-     * Parse Kafka publish configuration from node data.
+     * Get config values from node data.
+     * Supports both new structure (config.configValues) and old structure (direct fields).
      */
     @SuppressWarnings("unchecked")
-    private KafkaPublishConfig parseConfig(Map<String, Object> nodeData, ExecutionContext context) {
-        KafkaPublishConfig config = new KafkaPublishConfig();
+    private Map<String, Object> getConfigValues(Map<String, Object> nodeData) {
+        // Try new structure first: nodeData.config.configValues
+        Object configObj = nodeData.get("config");
+        if (configObj instanceof Map) {
+            Map<String, Object> config = (Map<String, Object>) configObj;
+            Object configValuesObj = config.get("configValues");
+            if (configValuesObj instanceof Map) {
+                return new HashMap<>((Map<String, Object>) configValuesObj);
+            }
+        }
         
-        // Get variables from context for template rendering
-        Map<String, Object> variables = context.getDataForNode((String) nodeData.get("nodeId"));
+        // Fallback to old structure: direct fields in nodeData
+        Map<String, Object> configValues = new HashMap<>();
         
         // Parse Kafka config
-        Map<String, Object> kafkaConfig = (Map<String, Object>) nodeData.get("kafka");
-        if (kafkaConfig != null) {
-            // Parse brokers (not used directly, but for validation)
-            List<String> brokers = (List<String>) kafkaConfig.get("brokers");
-            config.setBrokers(brokers);
-            
-            // Parse topic
-            String topic = (String) kafkaConfig.get("topic");
-            if (topic != null && topic.contains("${")) {
-                topic = templateRenderer.render(topic, variables);
-            }
-            config.setTopic(topic);
-            
-            // Parse key
-            String key = (String) kafkaConfig.get("key");
-            if (key != null && key.contains("${")) {
-                key = templateRenderer.render(key, variables);
-            }
-            config.setKey(key);
-            
-            // Parse headers
-            Map<String, Object> headers = (Map<String, Object>) kafkaConfig.get("headers");
-            if (headers != null) {
-                config.setHeaders(headers);
-            }
+        Object kafkaObj = nodeData.get("kafka");
+        if (kafkaObj instanceof Map) {
+            configValues.put("kafka", kafkaObj);
         } else {
             // Fallback: parse from root level
-            String topic = (String) nodeData.get("topic");
-            if (topic != null && topic.contains("${")) {
-                topic = templateRenderer.render(topic, variables);
+            Map<String, Object> kafkaConfig = new HashMap<>();
+            if (nodeData.containsKey("topic")) {
+                kafkaConfig.put("topic", nodeData.get("topic"));
             }
-            config.setTopic(topic);
+            if (nodeData.containsKey("key")) {
+                kafkaConfig.put("key", nodeData.get("key"));
+            }
+            if (nodeData.containsKey("brokers")) {
+                kafkaConfig.put("brokers", nodeData.get("brokers"));
+            }
+            if (nodeData.containsKey("headers")) {
+                kafkaConfig.put("headers", nodeData.get("headers"));
+            }
+            if (!kafkaConfig.isEmpty()) {
+                configValues.put("kafka", kafkaConfig);
+            }
+        }
+        
+        if (nodeData.containsKey("message")) {
+            configValues.put("message", nodeData.get("message"));
+        }
+        
+        return configValues;
+    }
+    
+    /**
+     * Parse resolved config (after MVEL evaluation) to KafkaPublishConfig.
+     */
+    @SuppressWarnings("unchecked")
+    private KafkaPublishConfig parseResolvedConfig(Map<String, Object> resolvedConfig) {
+        KafkaPublishConfig config = new KafkaPublishConfig();
+        
+        // Parse Kafka config
+        Object kafkaObj = resolvedConfig.get("kafka");
+        if (kafkaObj instanceof Map) {
+            Map<String, Object> kafkaConfig = (Map<String, Object>) kafkaObj;
             
-            String key = (String) nodeData.get("key");
-            if (key != null && key.contains("${")) {
-                key = templateRenderer.render(key, variables);
+            // Parse brokers
+            Object brokersObj = kafkaConfig.get("brokers");
+            if (brokersObj instanceof List) {
+                config.setBrokers((List<String>) brokersObj);
             }
-            config.setKey(key);
+            
+            // Parse topic
+            Object topicObj = kafkaConfig.get("topic");
+            if (topicObj != null) {
+                config.setTopic(topicObj.toString());
+            }
+            
+            // Parse key
+            Object keyObj = kafkaConfig.get("key");
+            if (keyObj != null) {
+                config.setKey(keyObj.toString());
+            }
+            
+            // Parse headers
+            Object headersObj = kafkaConfig.get("headers");
+            if (headersObj instanceof Map) {
+                config.setHeaders((Map<String, Object>) headersObj);
+            }
         }
         
         // Parse message
-        Object message = nodeData.get("message");
-        if (message instanceof String && ((String) message).contains("${")) {
-            message = templateRenderer.render((String) message, variables);
-        } else if (message instanceof Map) {
-            // Render nested values in message
-            message = renderMessageTemplate((Map<String, Object>) message, variables);
-        }
+        Object message = resolvedConfig.get("message");
         config.setMessage(message);
         
         return config;
     }
-
+    
     /**
-     * Render message template recursively.
+     * Apply output mapping to raw response.
+     * Uses output mapping from action registry or node config (if provided).
      */
     @SuppressWarnings("unchecked")
-    private Map<String, Object> renderMessageTemplate(Map<String, Object> message, Map<String, Object> variables) {
-        Map<String, Object> rendered = new HashMap<>();
-        message.forEach((key, value) -> {
-            if (value instanceof String && ((String) value).contains("${")) {
-                rendered.put(key, templateRenderer.render((String) value, variables));
-            } else if (value instanceof Map) {
-                rendered.put(key, renderMessageTemplate((Map<String, Object>) value, variables));
-            } else {
-                rendered.put(key, value);
+    private Map<String, Object> applyOutputMapping(
+            Action action, 
+            Map<String, Object> nodeData, 
+            Map<String, Object> outputContext,
+            Map<String, Object> rawResponse) {
+        
+        // Get output mapping from node config (if provided) or action registry
+        Map<String, String> outputMapping = null;
+        
+        // Try node config first (custom override)
+        Object configObj = nodeData.get("config");
+        if (configObj instanceof Map) {
+            Map<String, Object> config = (Map<String, Object>) configObj;
+            Object outputMappingObj = config.get("outputMapping");
+            if (outputMappingObj instanceof Map) {
+                outputMapping = (Map<String, String>) outputMappingObj;
             }
-        });
-        return rendered;
+        }
+        
+        // Fallback to action registry output mapping
+        if (outputMapping == null && action.getConfigTemplate() != null) {
+            Object outputMappingObj = action.getConfigTemplate().get("outputMapping");
+            if (outputMappingObj instanceof Map) {
+                outputMapping = (Map<String, String>) outputMappingObj;
+            }
+        }
+        
+        // If no output mapping, return raw response with status
+        if (outputMapping == null || outputMapping.isEmpty()) {
+            Map<String, Object> output = new HashMap<>(rawResponse);
+            Boolean success = (Boolean) rawResponse.get("success");
+            output.put("status", success != null && success ? "success" : "failed");
+            return output;
+        }
+        
+        // Apply output mapping with MVEL evaluation
+        Map<String, Object> mappedOutput = new HashMap<>();
+        for (Map.Entry<String, String> entry : outputMapping.entrySet()) {
+            String fieldName = entry.getKey();
+            String mvelExpression = entry.getValue();
+            
+            try {
+                Object value = MvelEvaluator.evaluateExpression(mvelExpression, outputContext);
+                mappedOutput.put(fieldName, value);
+            } catch (Exception e) {
+                log.warn("Failed to evaluate output mapping for field '{}': {}", fieldName, e.getMessage());
+                // Use raw response value if available
+                mappedOutput.put(fieldName, rawResponse.get(fieldName));
+            }
+        }
+        
+        return mappedOutput;
     }
 
     /**
@@ -226,9 +315,5 @@ public class PublishEventNodeExecutor implements NodeExecutor {
         }
     }
 
-    @Override
-    public NodeType getNodeType() {
-        return NodeType.ACTION;
-    }
 }
 

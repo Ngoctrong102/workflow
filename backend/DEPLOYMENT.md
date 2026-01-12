@@ -178,11 +178,11 @@ java -jar notification-platform-1.0.0-SNAPSHOT.jar > app.log 2>&1
 
 Or configure logging in `application.yml` for file output.
 
-## Database Migrations
+## Database Schema
 
-Flyway migrations run automatically on application startup. To verify:
+The database schema is managed automatically by Hibernate/JPA. To verify:
 
-1. Check Flyway migration status in logs
+1. Check application logs for schema initialization
 2. Verify tables exist in database:
 ```sql
 SELECT table_name FROM information_schema.tables 

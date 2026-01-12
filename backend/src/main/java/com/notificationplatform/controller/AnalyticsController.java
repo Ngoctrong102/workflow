@@ -1,7 +1,5 @@
 package com.notificationplatform.controller;
 
-import com.notificationplatform.dto.response.ChannelAnalyticsResponse;
-import com.notificationplatform.dto.response.DeliveryAnalyticsResponse;
 import com.notificationplatform.dto.response.ErrorAnalyticsResponse;
 import com.notificationplatform.dto.response.WorkflowAnalyticsResponse;
 import com.notificationplatform.service.analytics.AnalyticsService;
@@ -62,36 +60,9 @@ public class AnalyticsController {
         return ResponseEntity.ok(responses);
     }
 
-    @GetMapping("/deliveries")
-    @Operation(summary = "Get delivery analytics", description = "Get delivery analytics across all channels or filtered by channel")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Delivery analytics retrieved",
-                    content = @Content(schema = @Schema(implementation = DeliveryAnalyticsResponse.class)))
-    })
-    public ResponseEntity<DeliveryAnalyticsResponse> getDeliveryAnalytics(
-            @Parameter(description = "Start date (ISO 8601)") 
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @Parameter(description = "End date (ISO 8601)") 
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
-            @Parameter(description = "Filter by channel type") @RequestParam(required = false) String channel) {
-        DeliveryAnalyticsResponse response = analyticsService.getDeliveryAnalytics(startDate, endDate, channel);
-        return ResponseEntity.ok(response);
-    }
-
-    @GetMapping("/channels")
-    @Operation(summary = "Get channel analytics", description = "Get analytics for all channels")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Channel analytics retrieved",
-                    content = @Content(schema = @Schema(implementation = ChannelAnalyticsResponse.class)))
-    })
-    public ResponseEntity<List<ChannelAnalyticsResponse>> getChannelAnalytics(
-            @Parameter(description = "Start date (ISO 8601)") 
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @Parameter(description = "End date (ISO 8601)") 
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        List<ChannelAnalyticsResponse> responses = analyticsService.getAllChannelsAnalytics(startDate, endDate);
-        return ResponseEntity.ok(responses);
-    }
+    // Removed - Delivery and Channel entities no longer exist
+    // @GetMapping("/deliveries") ...
+    // @GetMapping("/channels") ...
 
     @GetMapping("/errors")
     @Operation(summary = "Get error analytics", description = "Get error analytics with breakdown by type, workflow, channel, and node")

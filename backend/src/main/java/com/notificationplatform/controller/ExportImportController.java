@@ -2,10 +2,8 @@ package com.notificationplatform.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.notificationplatform.dto.response.BulkOperationResult;
-import com.notificationplatform.dto.response.TemplateExportResponse;
 import com.notificationplatform.dto.response.WorkflowExportResponse;
 import com.notificationplatform.service.bulk.BulkOperationService;
-import com.notificationplatform.service.export.TemplateExportService;
 import com.notificationplatform.service.export.WorkflowExportService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -23,16 +21,13 @@ import java.util.List;
 public class ExportImportController {
 
     private final WorkflowExportService workflowExportService;
-    private final TemplateExportService templateExportService;
     private final BulkOperationService bulkOperationService;
     private final ObjectMapper objectMapper;
 
     public ExportImportController(WorkflowExportService workflowExportService,
-                                 TemplateExportService templateExportService,
                                  BulkOperationService bulkOperationService,
                                  ObjectMapper objectMapper) {
         this.workflowExportService = workflowExportService;
-        this.templateExportService = templateExportService;
         this.bulkOperationService = bulkOperationService;
         this.objectMapper = objectMapper;
     }
@@ -78,46 +73,8 @@ public class ExportImportController {
         return ResponseEntity.ok(results);
     }
 
-    // Template Export
-    @GetMapping("/templates/{id}/export")
-    public ResponseEntity<String> exportTemplate(@PathVariable String id) throws IOException {
-        TemplateExportResponse response = templateExportService.exportTemplate(id);
-        String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setContentDispositionFormData("attachment", "template-" + id + ".json");
-
-        return new ResponseEntity<>(json, headers, HttpStatus.OK);
-    }
-
-    @PostMapping("/templates/export")
-    public ResponseEntity<String> exportTemplates(@RequestBody List<String> templateIds) throws IOException {
-        TemplateExportResponse response = templateExportService.exportTemplates(templateIds);
-        String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setContentDispositionFormData("attachment", "templates-export.json");
-
-        return new ResponseEntity<>(json, headers, HttpStatus.OK);
-    }
-
-    // Template Import
-    @PostMapping("/templates/import")
-    public ResponseEntity<List<TemplateExportService.ImportResult>> importTemplates(
-            @RequestParam("file") MultipartFile file,
-            @RequestParam(required = false, defaultValue = "false") boolean overwriteExisting,
-            @RequestParam(required = false, defaultValue = "skip") String conflictResolution) throws IOException {
-        String jsonContent = new String(file.getBytes(), StandardCharsets.UTF_8);
-
-        TemplateExportService.ImportOptions options = new TemplateExportService.ImportOptions();
-        options.setOverwriteExisting(overwriteExisting);
-        options.setConflictResolution(conflictResolution);
-
-        List<TemplateExportService.ImportResult> results = templateExportService.importTemplates(jsonContent, options);
-        return ResponseEntity.ok(results);
-    }
+    // Removed - Template entity no longer exists
+    // Template Export/Import endpoints removed
 
     // Bulk Operations
     @PostMapping("/workflows/bulk-delete")
@@ -134,18 +91,7 @@ public class ExportImportController {
         return ResponseEntity.ok(result);
     }
 
-    @PostMapping("/templates/bulk-delete")
-    public ResponseEntity<BulkOperationResult> bulkDeleteTemplates(@RequestBody List<String> templateIds) {
-        BulkOperationResult result = bulkOperationService.bulkDeleteTemplates(templateIds);
-        return ResponseEntity.ok(result);
-    }
-
-    @PostMapping("/templates/bulk-update-status")
-    public ResponseEntity<BulkOperationResult> bulkUpdateTemplateStatus(
-            @RequestBody List<String> templateIds,
-            @RequestParam String status) {
-        BulkOperationResult result = bulkOperationService.bulkUpdateTemplateStatus(templateIds, status);
-        return ResponseEntity.ok(result);
-    }
+    // Removed - Template entity no longer exists
+    // Template bulk operations removed
 }
 

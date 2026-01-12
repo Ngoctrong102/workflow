@@ -41,30 +41,27 @@ CREATE INDEX idx_workflows_deleted_at ON workflows(deleted_at) WHERE deleted_at 
 
 ### Table: `triggers`
 
-Stores trigger configurations for workflows. **Note**: Triggers in this table are only definitions/configurations and do not automatically run. They only become active when a trigger node is added to a workflow definition and the workflow is activated.
+Stores trigger configurations (trigger configs) that can be reused across multiple workflows. **Note**: Trigger configs are independent and do not belong to any specific workflow. They only become active when linked to a trigger node in a workflow definition and the workflow is activated.
 
 **Concept Hierarchy:**
-1. **Trigger Registry** (hardcoded in code): Template definitions (api-call, scheduler, event)
-2. **Trigger Config** (this table): User-created configuration for a workflow trigger node
-3. **Trigger Node** (in `workflows.definition`): Node in workflow graph that references trigger config
-4. **Runtime Execution**: When workflow is active, system creates consumers/schedulers based on trigger config
+1. **Trigger Types** (hardcoded in code): Three fixed types (api-call, scheduler, event)
+2. **Trigger Config** (this table): User-created configuration, independent of workflows, can be shared
+3. **Trigger Instance** (in `workflows.definition`): Node in workflow graph that references trigger config via `triggerConfigId`
+4. **Runtime Execution**: When workflow is activated, system creates consumers/schedulers based on trigger config + instance overrides
 
 ```sql
 CREATE TABLE triggers (
     id VARCHAR(255) PRIMARY KEY,
-    workflow_id VARCHAR(255) NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-    node_id VARCHAR(255) NOT NULL,  -- Node ID in workflow definition
+    name VARCHAR(255) NOT NULL,
     trigger_type VARCHAR(50) NOT NULL CHECK (trigger_type IN ('api-call', 'scheduler', 'event')),
     config JSONB NOT NULL,  -- Trigger configuration
-    status VARCHAR(50) NOT NULL DEFAULT 'active',  -- active, inactive
+    status VARCHAR(50) NOT NULL DEFAULT 'active',  -- active, inactive (metadata only, not runtime state)
     error_message TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMP,
-    UNIQUE(workflow_id, node_id)
+    deleted_at TIMESTAMP
 );
 
-CREATE INDEX idx_triggers_workflow_id ON triggers(workflow_id);
 CREATE INDEX idx_triggers_trigger_type ON triggers(trigger_type);
 CREATE INDEX idx_triggers_status ON triggers(status);
 CREATE INDEX idx_triggers_deleted_at ON triggers(deleted_at) WHERE deleted_at IS NULL;
@@ -72,24 +69,33 @@ CREATE INDEX idx_triggers_config ON triggers USING GIN (config);
 ```
 
 ### Fields
-- `id`: Unique trigger identifier
-- `workflow_id`: Reference to workflow
-- `node_id`: Node ID in workflow definition (triggers reference this node)
-- `trigger_type`: Trigger type (api-call, scheduler, event)
+- `id`: Unique trigger config identifier
+- `name`: User-friendly name for the trigger config
+- `trigger_type`: Trigger type (api-call, scheduler, event) - one of the 3 hardcoded types
 - `config`: JSONB containing trigger configuration
   - API Call: `{endpointPath, httpMethod, authentication, requestSchema}`
   - Scheduler: `{cronExpression, timezone, startDate, endDate, repeat, data}`
-  - Event (Kafka): `{kafka: {brokers, topic, consumerGroup, offset}, schemas, kafkaConnect}`
-- `status`: Trigger status (active, inactive) - metadata only, not runtime state
-- `error_message`: Error message if trigger has configuration error
+  - Event (Kafka): `{kafka: {brokers, topic, offset}, filter}`
+  - **Note**: Instance-specific fields (e.g., `consumerGroup` for Event triggers) are NOT stored here, but in workflow definition `instanceConfig`
+- `status`: Trigger config status (active, inactive) - metadata only, determines if config can be selected in workflow builder
+- `error_message`: Error message if trigger config has configuration error
 - `created_at`: Creation timestamp
 - `updated_at`: Last update timestamp
 - `deleted_at`: Soft delete timestamp
 
 ### Important Notes
-- **Triggers are configuration only**: They do not automatically run. Runtime state (ACTIVE, PAUSED, etc.) is managed separately (in memory or separate table if needed).
-- **Trigger nodes in workflow**: When a trigger node is added to `workflows.definition`, it references a trigger config via `node_id`.
-- **Runtime activation**: When workflow is activated, system reads trigger node from workflow definition and creates consumer/scheduler based on trigger config.
+- **Trigger configs are independent**: They are not tied to any workflow. Multiple workflows can share the same trigger config.
+- **Trigger instances in workflow**: When a trigger config is linked to a workflow node, a trigger instance is created in `workflows.definition` with:
+  - `triggerConfigId`: Reference to trigger config
+  - `triggerType`: Trigger type
+  - `instanceConfig`: Instance-specific overrides (e.g., consumerGroup)
+- **Runtime activation**: When workflow is activated, system:
+  1. Reads trigger instances from workflow definition
+  2. Loads trigger configs from database
+  3. Merges config with instance-specific overrides
+  4. Creates consumers/schedulers
+  5. Stores runtime state in workflow definition
+- **Sharing**: When trigger config is updated, changes apply to all workflows using it (except instance-specific overrides).
 
 ## Actions
 

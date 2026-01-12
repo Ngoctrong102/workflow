@@ -63,11 +63,13 @@ graph TB
         R2[GET /actions/registry<br/>Action Registry]
     end
     
-    subgraph "Trigger APIs"
-        TR1[POST /workflows/{id}/triggers/api<br/>Create API Trigger]
-        TR2[POST /workflows/{id}/triggers/schedule<br/>Create Schedule Trigger]
-        TR3[POST /workflows/{id}/triggers/event<br/>Create Event Trigger]
-        TR4[POST /trigger/{path}<br/>Trigger Workflow]
+    subgraph "Trigger Config APIs"
+        TR1[POST /triggers<br/>Create Trigger Config]
+        TR2[GET /triggers<br/>List Trigger Configs]
+        TR3[GET /triggers/{id}<br/>Get Trigger Config]
+        TR4[PUT /triggers/{id}<br/>Update Trigger Config]
+        TR5[DELETE /triggers/{id}<br/>Delete Trigger Config]
+        TR6[POST /trigger/{path}<br/>Trigger Workflow]
     end
     
     subgraph "Execution APIs"
@@ -104,28 +106,27 @@ POST /workflows
     "nodes": [
       {
         "id": "node-1",
-        "type": "trigger",
-        "subType": "api-call",
-        "label": "API Trigger",
-        "position": {"x": 100, "y": 100},
-        "registryId": "api-trigger-standard",
-        "config": {
-          "endpointPath": "/api/v1/trigger/workflow-123",
-          "httpMethod": "POST"
-        }
+        "nodeType": "trigger",
+        "nodeConfig": {
+          "triggerConfigId": "trigger-config-123",
+          "triggerType": "api-call",
+          "instanceConfig": {}
+        },
+        "position": {"x": 100, "y": 100}
       },
       {
         "id": "node-2",
-        "type": "action",
-        "subType": "custom-action",
-        "label": "Send Email",
-        "position": {"x": 300, "y": 100},
-        "registryId": "send-email-action",
-        "config": {
-          "recipients": ["${user.email}"],
-          "subject": "Welcome!",
-          "body": "Hello ${user.name}"
-        }
+        "nodeType": "action",
+        "nodeConfig": {
+          "registryId": "send-email-action",
+          "actionType": "custom-action",
+          "config": {
+            "recipients": ["@{user.email}"],
+            "subject": "Welcome!",
+            "body": "Hello @{user.name}"
+          }
+        },
+        "position": {"x": 300, "y": 100}
       }
     ],
     "edges": [
@@ -282,7 +283,9 @@ POST /workflows/{id}/rollback
 
 ## Trigger Registry
 
-### Get All Triggers
+**Note**: The trigger registry returns trigger configs from the database (`triggers` table), not hardcoded definitions. Trigger types (api-call, scheduler, event) are hardcoded in code, but users create multiple trigger configs for each type.
+
+### Get All Trigger Configs
 ```
 GET /triggers/registry
 ```
@@ -292,15 +295,23 @@ GET /triggers/registry
 {
   "triggers": [
     {
-      "id": "api-trigger-standard",
-      "name": "API Call Trigger",
-      "type": "api-call",
-      "description": "Receives HTTP request to start workflow",
-      "configTemplate": {...},
-      "metadata": {
-        "icon": "api-trigger",
-        "color": "#0ea5e9",
-        "version": "1.0.0"
+      "id": "trigger-config-123",
+      "name": "Daily 9 AM Report",
+      "triggerType": "scheduler",
+      "status": "active",
+      "config": {
+        "cronExpression": "0 9 * * *",
+        "timezone": "Asia/Ho_Chi_Minh"
+      }
+    },
+    {
+      "id": "trigger-config-456",
+      "name": "User Registration API",
+      "triggerType": "api-call",
+      "status": "active",
+      "config": {
+        "endpointPath": "/api/v1/trigger/user-registration",
+        "httpMethod": "POST"
       }
     }
   ]
@@ -309,18 +320,33 @@ GET /triggers/registry
 
 **See**: `@import(features/trigger-registry.md)` for trigger registry details.
 
-### Get Trigger by ID
+### Get Trigger Config by ID
 ```
 GET /triggers/registry/{id}
 ```
 
-### Get Trigger by Type
+### Get Trigger Configs by Type
 ```
 GET /triggers/registry/type/{type}
 ```
 
 **Query Parameters:**
 - `type`: Trigger type (api-call, scheduler, event)
+
+**Response:**
+```json
+{
+  "triggers": [
+    {
+      "id": "trigger-config-123",
+      "name": "Daily 9 AM Report",
+      "triggerType": "scheduler",
+      "status": "active",
+      "config": {...}
+    }
+  ]
+}
+```
 
 ## Action Registry
 
@@ -382,58 +408,25 @@ GET /actions/registry/type/{type}
 GET /actions/registry/custom
 ```
 
-## Triggers
+## Trigger Configs
 
-### Create API Trigger
+**Note**: Trigger configs are created in Trigger Management page, not through workflow endpoints. They can be reused across multiple workflows.
+
+### Create Trigger Config
+
 ```
-POST /workflows/{workflow_id}/triggers/api
+POST /triggers
 ```
 
 **Request Body:**
 ```json
 {
-  "nodeId": "node-1",
-  "registryId": "api-trigger-standard",
-  "config": {
-    "endpointPath": "/api/v1/trigger/workflow-123",
-    "httpMethod": "POST",
-    "authentication": {
-      "type": "api_key",
-      "key": "optional-api-key"
-    },
-    "requestSchema": {}
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "id": "trigger-123",
-  "workflowId": "workflow-123",
-  "nodeId": "node-1",
-  "triggerType": "api-call",
-  "config": {...},
+  "name": "Daily 9 AM Report",
+  "triggerType": "scheduler",
   "status": "active",
-  "created_at": "2024-01-01T00:00:00Z"
-}
-```
-
-**See**: `@import(features/triggers.md#1-api-call-trigger)` for API trigger details.
-
-### Create Schedule Trigger
-```
-POST /workflows/{workflow_id}/triggers/schedule
-```
-
-**Request Body:**
-```json
-{
-  "nodeId": "node-1",
-  "registryId": "scheduler-trigger-standard",
   "config": {
     "cronExpression": "0 9 * * *",
-    "timezone": "UTC",
+    "timezone": "Asia/Ho_Chi_Minh",
     "startDate": "2024-01-01T00:00:00Z",
     "endDate": null,
     "repeat": true,
@@ -442,83 +435,92 @@ POST /workflows/{workflow_id}/triggers/schedule
 }
 ```
 
-**See**: `@import(features/triggers.md#2-scheduled-trigger)` for schedule trigger details.
-
-### Create Event Trigger
-```
-POST /workflows/{workflow_id}/triggers/event
-```
-
-**Request Body:**
+**Response:**
 ```json
 {
-  "nodeId": "node-1",
-  "registryId": "kafka-event-trigger-standard",
-  "config": {
-    "kafka": {
-      "brokers": ["localhost:9092"],
-      "topic": "user.events",
-      "consumerGroup": "workflow-123-consumer",
-      "offset": "latest"
-    },
-    "schemas": [],
-    "filter": {
-      "eventType": "user.created"
-    }
-  }
+  "id": "trigger-config-123",
+  "name": "Daily 9 AM Report",
+  "triggerType": "scheduler",
+  "status": "active",
+  "config": {...},
+  "created_at": "2024-01-01T00:00:00Z",
+  "updated_at": "2024-01-01T00:00:00Z"
 }
 ```
 
-**See**: `@import(features/triggers.md#3-event-trigger-kafka)` for event trigger details.
+**See**: `@import(features/triggers.md#2-scheduled-trigger)` for schedule trigger details.
 
-### List Triggers
-```
-GET /workflows/{workflow_id}/triggers
-```
-
-### Get Trigger
+### Get Trigger Config
 ```
 GET /triggers/{trigger_id}
 ```
 
-### Update Trigger
+### List Trigger Configs
+```
+GET /triggers?triggerType={type}&status={status}&limit=20&offset=0
+```
+
+**Query Parameters:**
+- `triggerType`: Filter by type (api-call, scheduler, event)
+- `status`: Filter by status (active, inactive)
+- `limit`: Number of results (default: 20, max: 100)
+- `offset`: Pagination offset (default: 0)
+
+### Update Trigger Config
 ```
 PUT /triggers/{trigger_id}
 ```
 
-### Delete Trigger
+**Note**: When trigger config is updated, changes apply to all workflows using it (except instance-specific overrides).
+
+### Delete Trigger Config
 ```
 DELETE /triggers/{trigger_id}
 ```
 
+**Note**: Deleting trigger config does not affect workflows. Trigger nodes in workflows will show as "config not found" until a new config is linked.
+
+### Get Workflow Triggers
+```
+GET /workflows/{workflow_id}/triggers
+```
+
+**Response:**
+```json
+{
+  "triggers": [
+    {
+      "nodeId": "node-1",
+      "triggerConfigId": "trigger-config-123",
+      "triggerType": "event",
+      "triggerConfig": {
+        "id": "trigger-config-123",
+        "name": "User Events Listener",
+        "config": {...}
+      },
+      "instanceConfig": {
+        "consumerGroup": "workflow-456-consumer"
+      },
+      "runtimeState": "ACTIVE"
+    }
+  ]
+}
+```
+
+**Note**: This endpoint returns trigger nodes from workflow definition along with their trigger configs and runtime states.
+
 ### Trigger Instance Lifecycle
 
-#### Initialize Trigger Instance
-```
-POST /triggers/{trigger_id}/initialize
-```
+**Note**: Trigger instance lifecycle is managed through workflow activation/deactivation. There are no separate endpoints for instance lifecycle operations.
 
-#### Start Trigger Instance
-```
-POST /triggers/{trigger_id}/start
-```
+- **Activated**: When workflow is activated
+- **Paused**: When workflow is paused
+- **Resumed**: When workflow is resumed
+- **Stopped**: When workflow is deactivated
 
-#### Pause Trigger Instance
-```
-POST /triggers/{trigger_id}/pause
-```
+Runtime state is stored in workflow definition.
 
-#### Resume Trigger Instance
-```
-POST /triggers/{trigger_id}/resume
-```
-
-#### Stop Trigger Instance
-```
-POST /triggers/{trigger_id}/stop
-```
-
-**See**: `@import(features/trigger-registry.md#trigger-instance-lifecycle)` for lifecycle details.
+**See**: `@import(features/triggers.md#trigger-instance-management)` for lifecycle details.
 
 ### Trigger Workflow (API Trigger Endpoint)
 ```

@@ -8,8 +8,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useForm, Controller, useFieldArray } from "react-hook-form"
 import { Plus, Trash2, AlertCircle } from "lucide-react"
 import type { ABTest, ABTestVariant, SuccessMetric, AssignmentStrategy } from "@/types/ab-test"
-import { useTemplates } from "@/hooks/use-templates"
-import { useChannels } from "@/hooks/use-channels"
 
 interface ABTestEditorProps {
   test?: ABTest
@@ -18,10 +16,6 @@ interface ABTestEditorProps {
 }
 
 export function ABTestEditor({ test, onSave, onCancel }: ABTestEditorProps) {
-  const { data: templatesData } = useTemplates({ limit: 100 })
-  const { data: channelsData } = useChannels({ limit: 100 })
-  const templates = templatesData?.data || []
-  const channels = channelsData?.data || []
 
   const { register, handleSubmit, control, watch, formState: { errors } } = useForm({
     defaultValues: {
@@ -242,51 +236,6 @@ export function ABTestEditor({ test, onSave, onCancel }: ABTestEditorProps) {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor={`variants.${index}.template_id`}>Template</Label>
-                    <Controller
-                      name={`variants.${index}.template_id`}
-                      control={control}
-                      render={({ field }) => (
-                        <Select value={field.value || ""} onValueChange={field.onChange}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select template" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="">None</SelectItem>
-                            {(templates as Array<{ id: string; name: string }>).map((template) => (
-                              <SelectItem key={template.id} value={template.id}>
-                                {template.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor={`variants.${index}.channel`}>Channel</Label>
-                    <Controller
-                      name={`variants.${index}.channel`}
-                      control={control}
-                      render={({ field }) => (
-                        <Select value={field.value || ""} onValueChange={field.onChange}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select channel" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="">None</SelectItem>
-                            {(channels as Array<{ id: string; name: string; type: string }>).map((channel) => (
-                              <SelectItem key={channel.id} value={channel.type}>
-                                {channel.name} ({channel.type})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                  </div>
 
                   <div className="space-y-2">
                     <Label htmlFor={`variants.${index}.traffic_percentage`}>

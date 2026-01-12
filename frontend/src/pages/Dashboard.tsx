@@ -8,10 +8,8 @@ import { useWorkflows } from "@/hooks/use-workflows"
 import { useExecutions } from "@/hooks/use-executions"
 import { useRealtimeExecutions, type PollingInterval } from "@/hooks/use-realtime-executions"
 import { AutoRefreshControl } from "@/components/common/AutoRefreshControl"
-import { useTemplates } from "@/hooks/use-templates"
-import { useChannels } from "@/hooks/use-channels"
 import { useDeliveryAnalytics } from "@/hooks/use-analytics"
-import { Workflow, FileText, Radio, PlayCircle, Download } from "lucide-react"
+import { Workflow, PlayCircle, Download } from "lucide-react"
 import { format, subDays } from "date-fns"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
@@ -37,8 +35,6 @@ export default function Dashboard() {
     { limit: 10 },
     { pollingInterval }
   )
-  const { data: templatesData, isLoading: isLoadingTemplates } = useTemplates({ limit: 100 })
-  const { data: channelsData, isLoading: isLoadingChannels } = useChannels({ limit: 100 })
   
   const dateRange = {
     start: format(subDays(new Date(), 7), "yyyy-MM-dd"),
@@ -53,8 +49,6 @@ export default function Dashboard() {
   const workflows = workflowsData?.workflows || []
   const totalWorkflows = workflowsData?.total || 0
   const activeWorkflows = workflows.filter((w) => w.status === "active").length
-  const totalTemplates = (templatesData as { templates: unknown[]; total: number } | undefined)?.total || 0
-  const activeChannels = (channelsData as { channels: unknown[]; total: number } | undefined)?.total || 0
   const totalExecutions = executionsData?.total || deliveryData?.totalSent || 0
   const successExecutions = executionsData?.executions?.filter((e) => e.status === "COMPLETED").length || 0
   const successRate = totalExecutions > 0 ? (successExecutions / totalExecutions) * 100 : 0
@@ -125,7 +119,7 @@ export default function Dashboard() {
     },
   ]
 
-  const isLoading = isLoadingWorkflows || isLoadingTemplates || isLoadingChannels || isLoadingDelivery
+  const isLoading = isLoadingWorkflows || isLoadingDelivery
 
   const executionTrendChartRef = useRef<HTMLDivElement>(null)
   const deliveryMetricsChartRef = useRef<HTMLDivElement>(null)
@@ -137,14 +131,6 @@ export default function Dashboard() {
         metric: "Total Workflows",
         value: totalWorkflows,
         active: activeWorkflows,
-      },
-      {
-        metric: "Total Templates",
-        value: totalTemplates,
-      },
-      {
-        metric: "Active Channels",
-        value: activeChannels,
       },
       {
         metric: "Total Executions",
@@ -218,20 +204,6 @@ export default function Dashboard() {
               description={`${activeWorkflows} active`}
               href="/workflows"
               icon={<Workflow className="h-5 w-5" />}
-            />
-            <MetricCard
-              title="Total Templates"
-              value={totalTemplates}
-              description="Available templates"
-              href="/templates"
-              icon={<FileText className="h-5 w-5" />}
-            />
-            <MetricCard
-              title="Active Channels"
-              value={activeChannels}
-              description="Configured channels"
-              href="/channels"
-              icon={<Radio className="h-5 w-5" />}
             />
             <MetricCard
               title="Total Executions"

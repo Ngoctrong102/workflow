@@ -31,28 +31,44 @@ The workflow builder supports **3 main node categories**, each with specific sub
 
 ##### 1. Trigger Nodes
 
-Trigger nodes are entry points that start workflow execution. Each workflow must have exactly one trigger node.
+Trigger nodes are entry points that start workflow execution. A workflow can have one or more trigger nodes.
 
-**Trigger Selection Process**:
-1. User drags "Trigger" node from palette to canvas
-2. Properties Panel shows list of available triggers from Trigger Registry
-3. User selects a trigger definition (e.g., "API Call Trigger", "Scheduler Trigger", "Kafka Event Trigger")
-4. System loads trigger configuration template from registry
-5. User configures instance-specific settings (topic, endpoint, schedule, etc.)
-6. Each trigger instance creates an independent consumer/scheduler that can be paused/resumed/stopped independently
+**Trigger-First Flow**:
+1. **Create Trigger Config First**: User goes to Trigger Management page and creates a trigger config
+2. **Add Trigger Node to Workflow**: User drags "Trigger" node from palette to canvas
+3. **Select Trigger Config**: Properties Panel shows list of available trigger configs from Trigger Registry
+4. **Link Trigger Config**: User selects a trigger config (e.g., "Daily 9 AM Report", "User Registration API")
+5. **Configure Instance Settings**: User configures instance-specific settings (e.g., consumerGroup for Event triggers)
+6. **Trigger Instance Created**: System creates trigger instance in workflow definition node data
 
-**Available Trigger Types** (from Registry):
-- **API Call Trigger**: Receives HTTP request to start workflow
-- **Scheduler Trigger**: Cron-based scheduled execution
-- **Event Trigger (Kafka)**: Listens to Kafka topic events
+**Available Trigger Types**:
+- **API Call Trigger** (`api-call`): Receives HTTP request to start workflow
+- **Scheduler Trigger** (`scheduler`): Cron-based scheduled execution
+- **Event Trigger** (`event`): Listens to Kafka topic events
+
+**Trigger Instance Structure**:
+```json
+{
+  "id": "node-1",
+  "nodeType": "trigger",
+  "nodeConfig": {
+    "triggerConfigId": "trigger-config-123",
+    "triggerType": "event",
+    "instanceConfig": {
+      "consumerGroup": "workflow-456-consumer"
+    }
+  }
+}
+```
 
 **Trigger Instance Lifecycle**:
-- **Initialize**: Create consumer/scheduler instance
-- **Start**: Begin processing events/schedules
-- **Pause**: Temporarily stop processing (keeps connection)
-- **Resume**: Resume processing after pause
-- **Stop**: Stop processing completely
-- **Destroy**: Remove instance and release resources
+- **Created**: When trigger config is linked to workflow node
+- **Activated**: When workflow is activated (starts consumer/scheduler)
+- **Paused**: When workflow is paused (stops processing but keeps connection)
+- **Resumed**: When workflow is resumed
+- **Stopped**: When workflow is deactivated (stops completely)
+
+**Note**: Runtime state (ACTIVE, PAUSED, STOPPED) is stored in workflow definition.
 
 See [Trigger Registry](./trigger-registry.md) for registry details and [Triggers](./triggers.md) for trigger configuration.
 
@@ -96,13 +112,15 @@ Logic nodes control workflow execution flow and conditional branching.
 
 Action nodes perform operations, side effects, and external interactions.
 
-**Action Selection Process**:
-1. User drags "Action" node from palette to canvas
-2. Properties Panel shows list of available actions from Action Registry
-3. User selects an action definition (e.g., "API Call Action", "Publish Kafka Event", "Send Email")
-4. System loads action configuration template from registry
-5. User configures instance-specific settings (URL, topic, template, etc.)
-6. Action executes with configured settings during workflow execution
+**Action-First Flow** (Similar to Trigger):
+1. **Create Action Definition First**: User goes to Action Management page and creates an action definition (if not exists in registry)
+2. **Add Action Node to Workflow**: User drags "Action" node from palette to canvas
+3. **Select Action from Registry**: Properties Panel shows list of available actions from Action Registry
+4. **Link Action Definition**: User selects an action definition (e.g., "API Call Action", "Send Email")
+5. **Configure Action Settings**: User configures action-specific settings (URL, topic, template, etc.)
+6. **Action Config Stored**: Configuration is stored in workflow definition node data
+
+**Note**: Unlike triggers, actions do not have a separate config table. Action definitions are in the registry (`actions` table), and action configuration is stored directly in workflow definition node data.
 
 **Available Action Types** (from Registry):
 - **API Call Action**: Make HTTP request to external API

@@ -5,7 +5,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button"
 import { X, Filter } from "lucide-react"
 import { useWorkflows } from "@/hooks/use-workflows"
-import { useChannels } from "@/hooks/use-channels"
 import { format, subDays, subMonths } from "date-fns"
 import { cn } from "@/lib/utils"
 
@@ -52,10 +51,8 @@ export function AnalyticsFilterPanel({
   onReset,
 }: AnalyticsFilterPanelProps) {
   const { data: workflowsData } = useWorkflows({ limit: 100 })
-  const { data: channelsData } = useChannels({ limit: 100 })
 
   const workflows = workflowsData?.data || []
-  const channels = channelsData?.data || []
 
   const handlePresetClick = (preset: typeof datePresets[0]) => {
     const { start, end } = preset.getValue()
@@ -63,7 +60,7 @@ export function AnalyticsFilterPanel({
     onDateRangeChange("end", end)
   }
 
-  const hasFilters = selectedWorkflow || selectedChannel || selectedStatus
+  const hasFilters = selectedWorkflow || selectedStatus
 
   return (
     <Card className="sticky top-6 border-slate-200 shadow-sm">
@@ -161,29 +158,6 @@ export function AnalyticsFilterPanel({
           </Select>
         </div>
 
-        {/* Channel Filter */}
-        <div className="space-y-2">
-          <Label htmlFor="channel-filter" className="text-sm font-medium text-slate-700">Channel</Label>
-          <Select
-            value={selectedChannel || "all"}
-            onValueChange={(value) => onChannelChange(value === "all" ? undefined : value)}
-          >
-            <SelectTrigger 
-              id="channel-filter" 
-              className="h-9 text-sm transition-colors duration-200 focus:border-primary-500"
-            >
-              <SelectValue placeholder="All channels" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Channels</SelectItem>
-              {channels.map((channel) => (
-                <SelectItem key={channel.id} value={channel.id}>
-                  {channel.name} ({channel.type})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
 
         {/* Status Filter */}
         <div className="space-y-2">

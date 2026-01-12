@@ -67,6 +67,33 @@ Extended features: execution visualization, A/B testing, wait for events, etc.
 - [Sprint 24](./sprint-24.md) - Real-time Updates & Notifications
 - [Sprint 25](./sprint-25.md) - Accessibility & Internationalization
 
+### Phase 6: Registry Integration (Sprints 26-30)
+Trigger/Action Registry integration: Schema-based configuration, registry management, workflow builder updates.
+
+- [Sprint 26](./sprint-26.md) - Trigger/Action Registry Integration - Foundation
+- [Sprint 27](./sprint-27.md) - Trigger Registry Management Pages
+- [Sprint 28](./sprint-28.md) - Action Registry Editor Update
+- [Sprint 29](./sprint-29.md) - Workflow Builder - NodePalette & WorkflowCanvas Integration
+- [Sprint 30](./sprint-30.md) - Workflow Builder - PropertiesPanel Schema Integration
+
+### Phase 7: Action Config Fields (Sprints 31-34)
+Action configuration fields: API Call, Publish Event, Function configuration, and integration.
+
+- [Sprint 31](./sprint-31.md) - Action Config Fields - API Call Configuration
+- [Sprint 32](./sprint-32.md) - Action Config Fields - Publish Event & Function Configuration
+- [Sprint 33](./sprint-33.md) - Action Config Fields - Integration with ActionEditor
+- [Sprint 34](./sprint-34.md) - Action Config Fields - Workflow Builder Integration
+
+### Phase 8: Action Configuration với MVEL (Sprints 39-40)
+Action configuration với Config Template Schema và MVEL expression support.
+
+- [Sprint 39](./sprint-39.md) - ActionEditor - Config Template Schema
+- [Sprint 40](./sprint-40.md) - PropertiesPanel - Config Fields với MVEL Support
+
+**Related Backend Sprint**: [Sprint 27](../backend/sprint-27.md) - Backend MVEL Expression Evaluation
+
+**Design Document**: [MVEL Expression System](../../features/mvel-expression-system.md)
+
 ## Sprint Template Structure
 
 Each sprint file follows this structure:

@@ -70,5 +70,12 @@ public interface ActionRegistryService {
      * @throws com.notificationplatform.exception.ResourceNotFoundException if action not found
      */
     Action disableAction(String id);
+
+    /**
+     * Delete an action (soft delete).
+     * @param id Action ID
+     * @throws com.notificationplatform.exception.ResourceNotFoundException if action not found
+     */
+    void deleteAction(String id);
 }
 

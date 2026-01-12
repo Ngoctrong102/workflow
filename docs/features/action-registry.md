@@ -15,6 +15,15 @@ Actions must be **defined and registered** before they can be used in workflows.
 
 An action definition specifies the type, configuration template, and metadata for an action type.
 
+### Action Schema Structure
+
+**Mọi action cần 4 components:**
+
+1. **Input Schema** (Optional): Định nghĩa các fields cho data mapping từ previous nodes
+2. **Config Template Schema** (Required): Định nghĩa cấu trúc của config fields (url, method, headers, etc.)
+3. **Output Schema** (Required): Định nghĩa cấu trúc của output fields
+4. **Output Mapping** (Required): MVEL expressions để map từ raw action response vào output schema
+
 ```json
 {
   "id": "api-call-action-standard",
@@ -23,17 +32,51 @@ An action definition specifies the type, configuration template, and metadata fo
   "description": "Make HTTP request to external API",
   "category": "integration",
   "configTemplate": {
-    "url": "",
-    "method": "GET",
-    "headers": {},
-    "body": {},
-    "timeout": 5000,
-    "retry": {
-      "maxAttempts": 3,
-      "backoffStrategy": "exponential"
+    "inputSchema": {
+      "fields": [
+        {
+          "name": "userId",
+          "type": "string",
+          "required": false,
+          "description": "User ID from previous node"
+        }
+      ]
     },
-    "inputSchema": { ... },
-    "outputSchema": { ... }
+    "configTemplate": {
+      "fields": [
+        {
+          "name": "url",
+          "type": "url",
+          "required": true,
+          "description": "API endpoint URL"
+        },
+        {
+          "name": "method",
+          "type": "string",
+          "required": true,
+          "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+          "defaultValue": "GET"
+        }
+      ]
+    },
+    "outputSchema": {
+      "fields": [
+        {
+          "name": "statusCode",
+          "type": "number",
+          "description": "HTTP status code"
+        },
+        {
+          "name": "body",
+          "type": "json",
+          "description": "Response body"
+        }
+      ]
+    },
+    "outputMapping": {
+      "statusCode": "@{_response.statusCode}",
+      "body": "@{_response.body}"
+    }
   },
   "metadata": {
     "icon": "api-call",
@@ -42,6 +85,16 @@ An action definition specifies the type, configuration template, and metadata fo
   }
 }
 ```
+
+**Config Template Schema**:
+- Định nghĩa cấu trúc của config fields (url, method, headers, etc.)
+- Mỗi config field có: name, type, required, description, defaultValue, validation
+- User sẽ nhập values cho các fields này trong PropertiesPanel (có thể là static values hoặc MVEL expressions)
+
+**Output Mapping**:
+- MVEL expressions để map từ raw response vào output schema
+- Mỗi field trong output schema có một MVEL expression trong outputMapping
+- Context cho output mapping bao gồm `_response` (raw action result)
 
 ## Action Types in Registry
 
@@ -54,12 +107,70 @@ An action definition specifies the type, configuration template, and metadata fo
   "type": "api-call",
   "description": "Make HTTP request to external API",
   "configTemplate": {
-    "url": "",
-    "method": "GET|POST|PUT|PATCH|DELETE",
-    "headers": {},
-    "body": {},
-    "timeout": 5000,
-    "retry": { ... }
+    "inputSchema": {
+      "fields": [
+        {
+          "name": "userId",
+          "type": "string",
+          "required": false,
+          "description": "User ID from previous node"
+        }
+      ]
+    },
+    "configTemplate": {
+      "fields": [
+        {
+          "name": "url",
+          "type": "url",
+          "required": true,
+          "description": "API endpoint URL. Can use MVEL: /users/@{userID}"
+        },
+        {
+          "name": "method",
+          "type": "string",
+          "required": true,
+          "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+          "defaultValue": "GET"
+        },
+        {
+          "name": "headers",
+          "type": "object",
+          "required": false,
+          "description": "HTTP headers. Can use MVEL"
+        },
+        {
+          "name": "body",
+          "type": "json",
+          "required": false,
+          "description": "Request body. Can use MVEL expressions"
+        }
+      ]
+    },
+    "outputSchema": {
+      "fields": [
+        {
+          "name": "statusCode",
+          "type": "number",
+          "description": "HTTP status code"
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "enum": ["success", "error"],
+          "description": "Request status"
+        },
+        {
+          "name": "body",
+          "type": "json",
+          "description": "Response body"
+        }
+      ]
+    },
+    "outputMapping": {
+      "statusCode": "@{_response.statusCode}",
+      "status": "@{_response.statusCode} >= 200 && @{_response.statusCode} < 300 ? 'success' : 'error'",
+      "body": "@{_response.body}"
+    }
   }
 }
 ```
@@ -73,14 +184,70 @@ An action definition specifies the type, configuration template, and metadata fo
   "type": "publish-event",
   "description": "Publish message to Kafka topic",
   "configTemplate": {
-    "kafka": {
-      "brokers": ["localhost:9092"],
-      "topic": "",
-      "key": null,
-      "headers": {}
+    "inputSchema": {
+      "fields": [
+        {
+          "name": "eventType",
+          "type": "string",
+          "required": false,
+          "description": "Event type from previous node"
+        }
+      ]
     },
-    "message": {},
-    "outputSchema": { ... }
+    "configTemplate": {
+      "fields": [
+        {
+          "name": "kafka",
+          "type": "object",
+          "required": true,
+          "fields": [
+            {
+              "name": "brokers",
+              "type": "array",
+              "required": true,
+              "description": "Kafka broker addresses"
+            },
+            {
+              "name": "topic",
+              "type": "string",
+              "required": true,
+              "description": "Kafka topic name. Can use MVEL: events-@{eventType}"
+            }
+          ]
+        },
+        {
+          "name": "message",
+          "type": "json",
+          "required": false,
+          "description": "Message payload. Can use MVEL expressions"
+        }
+      ]
+    },
+    "outputSchema": {
+      "fields": [
+        {
+          "name": "status",
+          "type": "string",
+          "enum": ["success", "failed"],
+          "description": "Publish status"
+        },
+        {
+          "name": "topic",
+          "type": "string",
+          "description": "Topic name"
+        },
+        {
+          "name": "partition",
+          "type": "number",
+          "description": "Partition number"
+        }
+      ]
+    },
+    "outputMapping": {
+      "status": "@{_response.success == true ? 'success' : 'failed'}",
+      "topic": "@{_response.topic}",
+      "partition": "@{_response.partition}"
+    }
   }
 }
 ```
@@ -94,9 +261,38 @@ An action definition specifies the type, configuration template, and metadata fo
   "type": "function",
   "description": "Define simple calculation logic",
   "configTemplate": {
-    "expression": "",
-    "inputSchema": { ... },
-    "outputSchema": { ... }
+    "inputSchema": {
+      "fields": [
+        {
+          "name": "value1",
+          "type": "any",
+          "required": false,
+          "description": "First value from previous node"
+        }
+      ]
+    },
+    "configTemplate": {
+      "fields": [
+        {
+          "name": "expression",
+          "type": "string",
+          "required": true,
+          "description": "MVEL expression to evaluate"
+        }
+      ]
+    },
+    "outputSchema": {
+      "fields": [
+        {
+          "name": "result",
+          "type": "any",
+          "description": "Expression evaluation result"
+        }
+      ]
+    },
+    "outputMapping": {
+      "result": "@{_response.result}"
+    }
   }
 }
 ```
@@ -139,7 +335,7 @@ Custom actions are pre-registered action types with specific implementations:
 ### Database Schema
 
 ```sql
-CREATE TABLE action_definitions (
+CREATE TABLE actions (
     id VARCHAR(255) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     type VARCHAR(50) NOT NULL,
@@ -204,6 +400,15 @@ Response:
 
 ## Workflow Node Configuration
 
+### Action-First Flow
+
+**Similar to Trigger-First Flow**:
+1. User creates action definition in Action Management page (if not exists in registry)
+2. User adds action node to workflow
+3. User selects action from registry
+4. User configures action-specific settings
+5. Action configuration is stored in workflow definition node data
+
 ### Using Registry in Workflow
 
 When creating an action node in a workflow, users select from the registry:
@@ -211,22 +416,37 @@ When creating an action node in a workflow, users select from the registry:
 ```json
 {
   "id": "node-uuid",
-  "label": "sendEmail",
-  "type": "action",
-  "subType": "custom-action",
-  "registryId": "send-email-action",
-  "config": {
-    "recipient": "${user.email}",
-    "subject": "Welcome!",
-    "body": "Welcome to our platform!"
+  "nodeType": "action",
+  "nodeConfig": {
+    "registryId": "send-email-action",
+    "actionType": "custom-action",
+    "config": {
+      "recipient": "@{user.email}",
+      "subject": "Welcome!",
+      "body": "Welcome to our platform!"
+    }
   }
 }
 ```
 
 **Key Points**:
-- `registryId`: References the action definition from registry
-- `config`: Instance-specific configuration (overrides template defaults)
-- Each action instance has its own configuration
+- `registryId`: References the action definition from registry (`actions` table)
+- `config`: Action-specific configuration (stored in workflow definition node data)
+- Each action node has its own configuration
+- **Note**: Unlike triggers, actions do not have a separate config table. Action definitions are in the registry, and action configuration is stored directly in workflow definition.
+
+### Action Definition vs Action Config
+
+**Action Definition**:
+- Created in Action Management page
+- Stored in `actions` table (registry)
+- Contains template and schema definitions
+- Can be reused across multiple workflows
+
+**Action Config**:
+- Stored in workflow definition node data
+- Contains instance-specific configuration
+- Not shared between workflows (each workflow has its own config)
 
 ## Benefits
 
@@ -238,6 +458,9 @@ When creating an action node in a workflow, users select from the registry:
 
 ## Related Documentation
 
+- [MVEL Expression System](./mvel-expression-system.md) - MVEL syntax và evaluation
+- [Action Node Configuration](../technical/frontend/action-node-configuration.md) - Frontend configuration
+- [Action Execution](../technical/backend/action-execution.md) - Backend execution
 - [Trigger Registry](./trigger-registry.md) - Trigger registry system
 - [Workflow Builder](./workflow-builder.md) - Workflow builder feature
 - [Node Types](./node-types.md) - Node type specifications

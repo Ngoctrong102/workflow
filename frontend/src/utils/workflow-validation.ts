@@ -2,6 +2,8 @@ import type { Node, Edge } from "reactflow"
 import { NODE_DEFINITIONS } from "@/constants/workflow-nodes"
 import { parseFieldReference, type FieldReference } from "./fieldReferenceUtils"
 import type { FieldDefinition } from "./fieldTypeValidator"
+import { getNodeCategory } from "./node-type-utils"
+import { NodeTypeEnum } from "@/types/workflow"
 
 export interface ValidationError {
   nodeId?: string
@@ -25,8 +27,9 @@ export function validateWorkflow(nodes: Node[], edges: Edge[]): ValidationResult
 
   // Check if workflow has exactly one trigger node
   const triggerNodes = nodes.filter((node) => {
-    const nodeDef = NODE_DEFINITIONS.find((n) => n.type === node.data.type)
-    return nodeDef?.category === "trigger"
+    const nodeConfig = (node.data as any)?.config || {}
+    const nodeCategory = getNodeCategory(node.data.type as string, nodeConfig)
+    return nodeCategory === NodeTypeEnum.TRIGGER
   })
 
   if (triggerNodes.length === 0) {
@@ -43,20 +46,23 @@ export function validateWorkflow(nodes: Node[], edges: Edge[]): ValidationResult
 
   // Check if all nodes are connected (except trigger nodes)
   nodes.forEach((node) => {
-    const nodeDef = NODE_DEFINITIONS.find((n) => n.type === node.data.type)
-    if (!nodeDef) return
+    const nodeConfig = (node.data as any)?.config || {}
+    const nodeCategory = getNodeCategory(node.data.type as string, nodeConfig)
 
     // Trigger nodes don't need input connections
-    if (nodeDef.category === "trigger") {
+    if (nodeCategory === NodeTypeEnum.TRIGGER) {
       return
     }
+
+    // Get node definition for label (only for built-in nodes)
+    const nodeDef = NODE_DEFINITIONS.find((n) => n.type === node.data.type)
 
     // Check if node has input connection
     const hasInput = edges.some((edge) => edge.target === node.id)
     if (!hasInput) {
       errors.push({
         nodeId: node.id,
-        message: `Node "${node.data.label || nodeDef.label}" is not connected`,
+        message: `Node "${node.data.label || nodeDef?.label || node.id}" is not connected`,
         type: "error",
       })
     }
@@ -161,9 +167,16 @@ function validateNodeConfiguration(node: Node): ValidationError[] {
 
   // Node-specific validation
   const config = node.data.config || {}
+  // Get subtype from config (for trigger/action/logic subtypes)
+  const subtype = config.subtype as string | undefined
+  // Get node category to determine validation rules
+  const nodeCategory = getNodeCategory(node.data.type as string, config)
 
-  switch (node.data.type) {
-    case "api-trigger":
+  // Validate based on node category and subtype
+  // For TRIGGER nodes, check subtype
+  if (nodeCategory === NodeTypeEnum.TRIGGER) {
+    switch (subtype) {
+      case "api-trigger":
       if (!config.path) {
         errors.push({
           nodeId: node.id,
@@ -173,200 +186,106 @@ function validateNodeConfiguration(node: Node): ValidationError[] {
       }
       break
 
-    case "schedule-trigger":
-      if (!config.cron) {
-        errors.push({
-          nodeId: node.id,
-          message: "Schedule Trigger must have a cron expression",
-          type: "error",
-        })
-      }
-      break
-
-    case "send-email":
-    case "send-sms":
-    case "send-push":
-    case "send-in-app":
-      if (!config.recipients) {
-        errors.push({
-          nodeId: node.id,
-          message: `${nodeDef.label} must have recipients`,
-          type: "error",
-        })
-      }
-      break
-
-    case "send-slack":
-      if (!config.channel || !config.message) {
-        errors.push({
-          nodeId: node.id,
-          message: "Slack message must have channel and message",
-          type: "error",
-        })
-      }
-      break
-
-    case "send-discord":
-      if (!config.channelId || !config.content) {
-        errors.push({
-          nodeId: node.id,
-          message: "Discord message must have channel ID and content",
-          type: "error",
-        })
-      }
-      break
-
-    case "send-teams":
-      if (!config.title || !config.text) {
-        errors.push({
-          nodeId: node.id,
-          message: "Teams message must have title and text",
-          type: "error",
-        })
-      }
-      break
-
-    case "send-webhook":
-      if (!config.url) {
-        errors.push({
-          nodeId: node.id,
-          message: "Webhook must have a URL",
-          type: "error",
-        })
-      }
-      break
-
-    case "condition":
-      if (!config.field || !config.operator) {
-        errors.push({
-          nodeId: node.id,
-          message: "Condition must have field and operator",
-          type: "error",
-        })
-      }
-      break
-
-    case "switch":
-      if (!config.field) {
-        errors.push({
-          nodeId: node.id,
-          message: "Switch must have a field to evaluate",
-          type: "error",
-        })
-      }
-      break
-
-    case "loop":
-      if (!config.arrayField || !config.itemVariable) {
-        errors.push({
-          nodeId: node.id,
-          message: "Loop must have array field and item variable name",
-          type: "error",
-        })
-      }
-      break
-
-    case "merge":
-      const inputCount = Number(config.inputCount) || 2
-      if (inputCount < 2 || inputCount > 10) {
-        errors.push({
-          nodeId: node.id,
-          message: "Merge must have between 2 and 10 inputs",
-          type: "error",
-        })
-      }
-      break
-
-    case "transform":
-      if (!config.sourceField || !config.targetField) {
-        errors.push({
-          nodeId: node.id,
-          message: "Transform must have source and target fields",
-          type: "error",
-        })
-      }
-      break
-
-    case "map":
-      if (!config.mapping) {
-        errors.push({
-          nodeId: node.id,
-          message: "Map must have field mappings",
-          type: "error",
-        })
-      } else {
-        try {
-          JSON.parse(config.mapping as string)
-        } catch {
+      case "schedule-trigger":
+        if (!config.cron) {
           errors.push({
             nodeId: node.id,
-            message: "Map mappings must be valid JSON",
+            message: "Schedule Trigger must have a cron expression",
             type: "error",
           })
         }
-      }
-      break
+        break
 
-    case "filter":
-      if (!config.arrayField || !config.field || !config.operator) {
-        errors.push({
-          nodeId: node.id,
-          message: "Filter must have array field, filter field, and operator",
-          type: "error",
-        })
-      }
-      break
+      case "file-trigger":
+        if (!config.acceptedFormats) {
+          errors.push({
+            nodeId: node.id,
+            message: "File Trigger must have accepted file formats",
+            type: "error",
+          })
+        }
+        break
 
-    case "read-file":
-      if (!config.fileFormat || !config.outputField) {
-        errors.push({
-          nodeId: node.id,
-          message: "Read File must have file format and output field",
-          type: "error",
-        })
-      }
-      break
-
-    case "file-trigger":
-      if (!config.acceptedFormats) {
-        errors.push({
-          nodeId: node.id,
-          message: "File Trigger must have accepted file formats",
-          type: "error",
-        })
-      }
-      break
-
-    case "event-trigger":
-      if (!config.eventType || !config.topic) {
-        errors.push({
-          nodeId: node.id,
-          message: "Event Trigger must have event type and topic/queue name",
-          type: "error",
-        })
-      }
-      break
-
-    case "delay":
-      if (!config.duration || Number(config.duration) < 1) {
-        errors.push({
-          nodeId: node.id,
-          message: "Delay must have a valid duration",
-          type: "error",
-        })
-      }
-      break
-
-    case "ab-test":
-      if (!config.test_id) {
-        errors.push({
-          nodeId: node.id,
-          message: "A/B Test must have a test ID",
-          type: "error",
-        })
-      }
-      break
+      case "event-trigger":
+        if (!config.eventType || !config.topic) {
+          errors.push({
+            nodeId: node.id,
+            message: "Event Trigger must have event type and topic/queue name",
+            type: "error",
+          })
+        }
+        break
+    }
   }
+  
+  // For LOGIC nodes, check subtype
+  if (nodeCategory === NodeTypeEnum.LOGIC) {
+    switch (subtype) {
+      case "condition":
+        if (!config.field || !config.operator) {
+          errors.push({
+            nodeId: node.id,
+            message: "Condition must have field and operator",
+            type: "error",
+          })
+        }
+        break
+
+      case "switch":
+        if (!config.field) {
+          errors.push({
+            nodeId: node.id,
+            message: "Switch must have a field to evaluate",
+            type: "error",
+          })
+        }
+        break
+
+      case "loop":
+        if (!config.arrayField || !config.itemVariable) {
+          errors.push({
+            nodeId: node.id,
+            message: "Loop must have array field and item variable name",
+            type: "error",
+          })
+        }
+        break
+
+      case "merge":
+        const inputCount = Number(config.inputCount) || 2
+        if (inputCount < 2 || inputCount > 10) {
+          errors.push({
+            nodeId: node.id,
+            message: "Merge must have between 2 and 10 inputs",
+            type: "error",
+          })
+        }
+        break
+
+      case "delay":
+        if (!config.duration || Number(config.duration) < 1) {
+          errors.push({
+            nodeId: node.id,
+            message: "Delay must have a valid duration",
+            type: "error",
+          })
+        }
+        break
+
+      case "ab-test":
+        if (!config.test_id) {
+          errors.push({
+            nodeId: node.id,
+            message: "A/B Test must have a test ID",
+            type: "error",
+          })
+        }
+        break
+    }
+  }
+  
+  // For ACTION nodes, validation is done through registry configTemplate
+  // No specific validation needed here as actions are validated through their registry definitions
 
   return errors
 }
@@ -387,118 +306,56 @@ function validateNodeFieldReferences(
   }
 
   const config = node.data.config || {}
+  // Get subtype from config (for trigger/action/logic subtypes)
+  const subtype = config.subtype as string | undefined
+  // Get node category to determine validation rules
+  const nodeCategory = getNodeCategory(node.data.type as string, config)
 
-  // Validate field references based on node type
-  switch (node.data.type) {
-    case "condition":
-      if (config.field) {
-        const fieldErrors = validateFieldReference(
-          config.field,
-          node.id,
-          "Condition field",
-          { objectTypes, validateTypes, allowOldFormat }
-        )
-        errors.push(...fieldErrors)
-      }
-      break
+  // Validate field references based on node category and subtype
+  // For LOGIC nodes, check subtype
+  if (nodeCategory === NodeTypeEnum.LOGIC) {
+    switch (subtype) {
+      case "condition":
+        if (config.field) {
+          const fieldErrors = validateFieldReference(
+            config.field,
+            node.id,
+            "Condition field",
+            { objectTypes, validateTypes, allowOldFormat }
+          )
+          errors.push(...fieldErrors)
+        }
+        break
 
-    case "switch":
-      if (config.field) {
-        const fieldErrors = validateFieldReference(
-          config.field,
-          node.id,
-          "Switch field",
-          { objectTypes, validateTypes, allowOldFormat }
-        )
-        errors.push(...fieldErrors)
-      }
-      break
+      case "switch":
+        if (config.field) {
+          const fieldErrors = validateFieldReference(
+            config.field,
+            node.id,
+            "Switch field",
+            { objectTypes, validateTypes, allowOldFormat }
+          )
+          errors.push(...fieldErrors)
+        }
+        break
 
-    case "loop":
-      if (config.arrayField) {
-        const arrayFieldErrors = validateFieldReference(
-          config.arrayField,
-          node.id,
-          "Loop array field",
-          { objectTypes, validateTypes: true, allowOldFormat } // Require array type
-        )
-        errors.push(...arrayFieldErrors)
-      }
-      break
-
-    case "transform":
-      if (config.sourceField) {
-        const sourceErrors = validateFieldReference(
-          config.sourceField,
-          node.id,
-          "Transform source field",
-          { objectTypes, validateTypes, allowOldFormat }
-        )
-        errors.push(...sourceErrors)
-      }
-      if (config.targetField) {
-        const targetErrors = validateFieldReference(
-          config.targetField,
-          node.id,
-          "Transform target field",
-          { objectTypes, validateTypes, allowOldFormat }
-        )
-        errors.push(...targetErrors)
-      }
-      break
-
-    case "map":
-      if (config.mapping && typeof config.mapping === "object") {
-        Object.entries(config.mapping).forEach(([key, value]) => {
-          if (typeof value === "string" || (typeof value === "object" && value !== null)) {
-            const mappingErrors = validateFieldReference(
-              value,
-              node.id,
-              `Map field "${key}"`,
-              { objectTypes, validateTypes, allowOldFormat }
-            )
-            errors.push(...mappingErrors)
-          }
-        })
-      }
-      break
-
-    case "filter":
-      if (config.field) {
-        const fieldErrors = validateFieldReference(
-          config.field,
-          node.id,
-          "Filter field",
-          { objectTypes, validateTypes, allowOldFormat }
-        )
-        errors.push(...fieldErrors)
-      }
-      if (config.arrayField) {
-        const arrayFieldErrors = validateFieldReference(
-          config.arrayField,
-          node.id,
-          "Filter array field",
-          { objectTypes, validateTypes, allowOldFormat }
-        )
-        errors.push(...arrayFieldErrors)
-      }
-      break
-
-    case "send-email":
-    case "send-sms":
-      // Recipient fields might be field references
-      if (config.recipientField) {
-        const recipientErrors = validateFieldReference(
-          config.recipientField,
-          node.id,
-          "Recipient field",
-          { objectTypes, validateTypes: false, allowOldFormat } // Don't validate type for recipients
-        )
-        errors.push(...recipientErrors)
-      }
-      break
+      case "loop":
+        if (config.arrayField) {
+          const arrayFieldErrors = validateFieldReference(
+            config.arrayField,
+            node.id,
+            "Loop array field",
+            { objectTypes, validateTypes: true, allowOldFormat } // Require array type
+          )
+          errors.push(...arrayFieldErrors)
+        }
+        break
+    }
   }
-
+  
+  // For ACTION nodes, field references are validated through registry configTemplate
+  // No specific validation needed here as actions are validated through their registry definitions
+  
   return errors
 }
 
@@ -652,20 +509,22 @@ export function validateConnection(
   target: Node,
   edges: Edge[]
 ): { isValid: boolean; message?: string } {
-  const sourceDef = NODE_DEFINITIONS.find((n) => n.type === source.data.type)
-  const targetDef = NODE_DEFINITIONS.find((n) => n.type === target.data.type)
-
-  if (!sourceDef || !targetDef) {
-    return { isValid: false, message: "Invalid node types" }
-  }
+  // Use getNodeCategory to determine node category (works for both built-in and registry nodes)
+  const sourceConfig = (source.data as any)?.config || {}
+  const targetConfig = (target.data as any)?.config || {}
+  const sourceType = source.data.type as string
+  const targetType = target.data.type as string
+  
+  const sourceCategory = getNodeCategory(sourceType, sourceConfig)
+  const targetCategory = getNodeCategory(targetType, targetConfig)
 
   // Can't connect trigger to trigger
-  if (sourceDef.category === "trigger" && targetDef.category === "trigger") {
+  if (sourceCategory === NodeTypeEnum.TRIGGER && targetCategory === NodeTypeEnum.TRIGGER) {
     return { isValid: false, message: "Cannot connect trigger to trigger" }
   }
 
   // Can't connect to trigger
-  if (targetDef.category === "trigger") {
+  if (targetCategory === NodeTypeEnum.TRIGGER) {
     return { isValid: false, message: "Cannot connect to trigger node" }
   }
 
@@ -677,24 +536,31 @@ export function validateConnection(
     return { isValid: false, message: "Connection already exists" }
   }
 
+  // Get node definitions for input/output limits (only for built-in nodes)
+  // Note: Registry nodes (triggers/actions) don't have entries in NODE_DEFINITIONS
+  const targetDef = NODE_DEFINITIONS.find((n) => n.type === targetType)
+
   // Validate action nodes can only have single input
-  if (targetDef.category === "action") {
+  // For registry action nodes, assume 1 input (default for actions)
+  if (targetCategory === NodeTypeEnum.ACTION) {
     const existingInputs = edges.filter((edge) => edge.target === target.id).length
-    if (existingInputs >= targetDef.inputs) {
+    const maxInputs = targetDef?.inputs ?? 1 // Default to 1 input for action nodes
+    if (existingInputs >= maxInputs) {
       return {
         isValid: false,
-        message: `Action nodes can only have ${targetDef.inputs} input connection(s)`,
+        message: `Action nodes can only have ${maxInputs} input connection(s)`,
       }
     }
   }
 
   // Logic nodes can have multiple inputs/outputs - check if within limits
-  if (targetDef.category === "logic") {
+  if (targetCategory === NodeTypeEnum.LOGIC) {
     const existingInputs = edges.filter((edge) => edge.target === target.id).length
-    if (existingInputs >= targetDef.inputs) {
+    const maxInputs = targetDef?.inputs ?? 1 // Default to 1 input for logic nodes
+    if (existingInputs >= maxInputs) {
       return {
         isValid: false,
-        message: `Logic node can only have ${targetDef.inputs} input connection(s)`,
+        message: `Logic node can only have ${maxInputs} input connection(s)`,
       }
     }
   }

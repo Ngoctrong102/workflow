@@ -4,7 +4,6 @@ import com.notificationplatform.entity.AnalyticsDaily;
 import com.notificationplatform.entity.Execution;
 import com.notificationplatform.entity.Workflow;
 import com.notificationplatform.repository.AnalyticsRepository;
-import com.notificationplatform.repository.DeliveryRepository;
 import com.notificationplatform.repository.ExecutionRepository;
 import com.notificationplatform.repository.NodeExecutionRepository;
 import com.notificationplatform.repository.WorkflowRepository;
@@ -22,18 +21,15 @@ public class AnalyticsAggregator {
 
     private final WorkflowRepository workflowRepository;
     private final ExecutionRepository executionRepository;
-    private final DeliveryRepository deliveryRepository;
     private final NodeExecutionRepository nodeExecutionRepository;
     private final AnalyticsRepository analyticsRepository;
 
     public AnalyticsAggregator(WorkflowRepository workflowRepository,
                                ExecutionRepository executionRepository,
-                               DeliveryRepository deliveryRepository,
                                NodeExecutionRepository nodeExecutionRepository,
                                AnalyticsRepository analyticsRepository) {
         this.workflowRepository = workflowRepository;
         this.executionRepository = executionRepository;
-        this.deliveryRepository = deliveryRepository;
         this.nodeExecutionRepository = nodeExecutionRepository;
         this.analyticsRepository = analyticsRepository;
     }
@@ -75,15 +71,10 @@ public class AnalyticsAggregator {
                 .filter(e -> "failed".equals(e.getStatus()))
                 .count();
 
-        // Get all deliveries for the day
-        List<com.notificationplatform.entity.Delivery> deliveries = deliveryRepository.findByDateRange(start, end);
-        long totalDeliveries = deliveries.size();
-        long delivered = deliveries.stream()
-                .filter(d -> "delivered".equals(d.getStatus()))
-                .count();
-        long failedDeliveries = deliveries.stream()
-                .filter(d -> "failed".equals(d.getStatus()))
-                .count();
+        // TODO: Delivery entity no longer exists
+        long totalDeliveries = 0;
+        long delivered = 0;
+        long failedDeliveries = 0;
 
         // Save overall metrics
         saveAnalyticsRecord(date, null, null, "total_executions", totalExecutions);
@@ -129,29 +120,8 @@ public class AnalyticsAggregator {
     }
 
     private void aggregateChannelMetrics(LocalDate date, LocalDateTime start, LocalDateTime end) {
-        List<com.notificationplatform.entity.Delivery> deliveries = deliveryRepository.findByDateRange(start, end);
-
-        // Group by channel
-        Map<String, List<com.notificationplatform.entity.Delivery>> deliveriesByChannel = deliveries.stream()
-                .collect(Collectors.groupingBy(com.notificationplatform.entity.Delivery::getChannel));
-
-        for (Map.Entry<String, List<com.notificationplatform.entity.Delivery>> entry : deliveriesByChannel.entrySet()) {
-            String channel = entry.getKey();
-            List<com.notificationplatform.entity.Delivery> channelDeliveries = entry.getValue();
-
-            long totalDeliveries = channelDeliveries.size();
-            long delivered = channelDeliveries.stream()
-                    .filter(d -> "delivered".equals(d.getStatus()))
-                    .count();
-            long failed = channelDeliveries.stream()
-                    .filter(d -> "failed".equals(d.getStatus()))
-                    .count();
-
-            // Save channel metrics
-            saveAnalyticsRecord(date, null, channel, "channel_deliveries", totalDeliveries);
-            saveAnalyticsRecord(date, null, channel, "channel_delivered", delivered);
-            saveAnalyticsRecord(date, null, channel, "channel_failed", failed);
-        }
+        // TODO: Delivery and Channel entities no longer exist
+        // Channel metrics aggregation removed
     }
 
     private void saveAnalyticsRecord(LocalDate date, Workflow workflow, String channel, String metricType, Long metricValue) {

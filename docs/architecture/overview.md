@@ -137,11 +137,11 @@ sequenceDiagram
     participant REDIS as Redis Cache
     
     alt API Trigger
-        Trigger->>TS: HTTP POST /triggers/api/{id}
+        Trigger->>TS: HTTP POST /trigger/{trigger_path}
     else Schedule Trigger
-        Trigger->>TS: Cron fires
+        Trigger->>TS: Cron fires (from scheduler)
     else Event Trigger
-        Trigger->>TS: Kafka message
+        Trigger->>TS: Kafka message (from consumer)
     end
     
     TS->>DB: Create execution record

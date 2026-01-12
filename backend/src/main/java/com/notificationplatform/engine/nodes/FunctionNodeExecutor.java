@@ -2,12 +2,14 @@ package com.notificationplatform.engine.nodes;
 
 import com.notificationplatform.engine.ExecutionContext;
 import com.notificationplatform.engine.NodeExecutionResult;
-import com.notificationplatform.engine.NodeExecutor;
-import com.notificationplatform.entity.enums.NodeType;
+import com.notificationplatform.entity.Action;
+import com.notificationplatform.exception.ResourceNotFoundException;
 import com.notificationplatform.service.registry.ActionRegistryService;
-import com.notificationplatform.service.template.TemplateRenderer;
+import com.notificationplatform.service.workflow.ExecutionContextBuilder;
+import com.notificationplatform.util.MvelEvaluator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.mvel2.MVEL;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -17,14 +19,15 @@ import java.util.Map;
  * Executor for Function Action node.
  * Evaluates expressions for data transformations.
  * 
+ * This executor is called by ActionNodeExecutor for FUNCTION action type.
+ * 
  * See: @import(features/node-types.md#function-action)
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class FunctionNodeExecutor implements NodeExecutor {
+public class FunctionNodeExecutor implements ActionExecutor {
 
-    private final TemplateRenderer templateRenderer;
     private final ActionRegistryService actionRegistryService;
 
     @Override
@@ -38,37 +41,61 @@ public class FunctionNodeExecutor implements NodeExecutor {
                 throw new IllegalArgumentException("Registry ID is required for function action");
             }
             
+            Action action;
             try {
-                actionRegistryService.getActionById(registryId);
-            } catch (com.notificationplatform.exception.ResourceNotFoundException e) {
+                action = actionRegistryService.getActionById(registryId);
+            } catch (ResourceNotFoundException e) {
                 throw new IllegalArgumentException("Action not found in registry: " + registryId);
             }
             
-            // Parse expression
-            String expression = (String) nodeData.get("expression");
-            if (expression == null || expression.isEmpty()) {
+            // Get config values (new structure) or parse from nodeData (backward compatibility)
+            Map<String, Object> configValues = getConfigValues(nodeData);
+            
+            // Build MVEL execution context
+            Map<String, Object> mvelContext = ExecutionContextBuilder.buildContext(context);
+            
+            // Evaluate MVEL expressions in config values
+            Map<String, Object> resolvedConfig = (Map<String, Object>) 
+                MvelEvaluator.evaluateObject(configValues, mvelContext);
+            
+            // Get expression from resolved config
+            Object expressionObj = resolvedConfig.get("expression");
+            if (expressionObj == null || expressionObj.toString().isEmpty()) {
                 throw new IllegalArgumentException("Expression is required for function action");
             }
             
-            // Get variables from context
-            Map<String, Object> variables = context.getDataForNode(nodeId);
+            String expression = expressionObj.toString();
             
-            // Evaluate expression using template renderer
-            // For MVP, we use simple template rendering
-            // In the future, this could use a more sophisticated expression evaluator
-            String result = templateRenderer.render(expression, variables);
-            
-            // Parse result if it's a number or boolean
-            Object parsedResult = parseResult(result);
+            // Evaluate expression using MVEL
+            // Expression may contain MVEL syntax, so we need to extract and evaluate it
+            Object result;
+            if (expression.contains("@{")) {
+                // Expression contains MVEL syntax, evaluate it
+                result = MvelEvaluator.evaluateExpression(expression, mvelContext);
+            } else {
+                // Expression is a pure MVEL expression, evaluate directly
+                try {
+                    result = MVEL.eval(expression, mvelContext);
+                } catch (Exception e) {
+                    // If evaluation fails, treat as string literal
+                    result = expression;
+                }
+            }
             
             // Get output field name
-            String outputField = (String) nodeData.getOrDefault("outputField", "result");
+            Object outputFieldObj = resolvedConfig.get("outputField");
+            String outputField = outputFieldObj != null ? outputFieldObj.toString() : "result";
             
-            // Build output
-            Map<String, Object> output = new HashMap<>();
-            output.put(outputField, parsedResult);
-            output.put("expression", expression);
-            output.put("result", parsedResult);
+            // Build raw response
+            Map<String, Object> rawResponse = new HashMap<>();
+            rawResponse.put("result", result);
+            rawResponse.put("expression", expression);
+            
+            // Build output context for output mapping
+            Map<String, Object> outputContext = ExecutionContextBuilder.buildOutputContext(context, rawResponse);
+            
+            // Apply output mapping (if available from action registry or node config)
+            Map<String, Object> output = applyOutputMapping(action, nodeData, outputContext, rawResponse, outputField);
             
             return new NodeExecutionResult(true, output);
             
@@ -84,36 +111,93 @@ public class FunctionNodeExecutor implements NodeExecutor {
     }
 
     /**
-     * Parse result string to appropriate type.
+     * Get config values from node data.
+     * Supports both new structure (config.configValues) and old structure (direct fields).
      */
-    private Object parseResult(String result) {
-        if (result == null) {
-            return null;
-        }
-        
-        // Try to parse as number
-        try {
-            if (result.contains(".")) {
-                return Double.parseDouble(result);
-            } else {
-                return Long.parseLong(result);
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> getConfigValues(Map<String, Object> nodeData) {
+        // Try new structure first: nodeData.config.configValues
+        Object configObj = nodeData.get("config");
+        if (configObj instanceof Map) {
+            Map<String, Object> config = (Map<String, Object>) configObj;
+            Object configValuesObj = config.get("configValues");
+            if (configValuesObj instanceof Map) {
+                return new HashMap<>((Map<String, Object>) configValuesObj);
             }
-        } catch (NumberFormatException e) {
-            // Not a number
         }
         
-        // Try to parse as boolean
-        if ("true".equalsIgnoreCase(result) || "false".equalsIgnoreCase(result)) {
-            return Boolean.parseBoolean(result);
+        // Fallback to old structure: direct fields in nodeData
+        Map<String, Object> configValues = new HashMap<>();
+        if (nodeData.containsKey("expression")) {
+            configValues.put("expression", nodeData.get("expression"));
+        }
+        if (nodeData.containsKey("outputField")) {
+            configValues.put("outputField", nodeData.get("outputField"));
+        } else {
+            configValues.put("outputField", "result");
         }
         
-        // Return as string
-        return result;
+        return configValues;
+    }
+    
+    /**
+     * Apply output mapping to raw response.
+     * Uses output mapping from action registry or node config (if provided).
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> applyOutputMapping(
+            Action action, 
+            Map<String, Object> nodeData, 
+            Map<String, Object> outputContext,
+            Map<String, Object> rawResponse,
+            String defaultOutputField) {
+        
+        // Get output mapping from node config (if provided) or action registry
+        Map<String, String> outputMapping = null;
+        
+        // Try node config first (custom override)
+        Object configObj = nodeData.get("config");
+        if (configObj instanceof Map) {
+            Map<String, Object> config = (Map<String, Object>) configObj;
+            Object outputMappingObj = config.get("outputMapping");
+            if (outputMappingObj instanceof Map) {
+                outputMapping = (Map<String, String>) outputMappingObj;
+            }
+        }
+        
+        // Fallback to action registry output mapping
+        if (outputMapping == null && action.getConfigTemplate() != null) {
+            Object outputMappingObj = action.getConfigTemplate().get("outputMapping");
+            if (outputMappingObj instanceof Map) {
+                outputMapping = (Map<String, String>) outputMappingObj;
+            }
+        }
+        
+        // If no output mapping, return raw response with default output field
+        if (outputMapping == null || outputMapping.isEmpty()) {
+            Map<String, Object> output = new HashMap<>(rawResponse);
+            output.put(defaultOutputField, rawResponse.get("result"));
+            return output;
+        }
+        
+        // Apply output mapping with MVEL evaluation
+        Map<String, Object> mappedOutput = new HashMap<>();
+        for (Map.Entry<String, String> entry : outputMapping.entrySet()) {
+            String fieldName = entry.getKey();
+            String mvelExpression = entry.getValue();
+            
+            try {
+                Object value = MvelEvaluator.evaluateExpression(mvelExpression, outputContext);
+                mappedOutput.put(fieldName, value);
+            } catch (Exception e) {
+                log.warn("Failed to evaluate output mapping for field '{}': {}", fieldName, e.getMessage());
+                // Use raw response value if available
+                mappedOutput.put(fieldName, rawResponse.get(fieldName));
+            }
+        }
+        
+        return mappedOutput;
     }
 
-    @Override
-    public NodeType getNodeType() {
-        return NodeType.ACTION;
-    }
 }
 

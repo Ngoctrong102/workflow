@@ -24,7 +24,6 @@ public class ActionDefinition {
     private String id;
     private String name;
     private ActionType type;
-    private String actionType; // For custom actions
     private String description;
     private Map<String, Object> configTemplate;
     private Map<String, Object> metadata;

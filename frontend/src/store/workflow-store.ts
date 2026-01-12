@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Node, Edge } from 'reactflow'
-import type { WorkflowDefinition, WorkflowNodeType } from '@/types/workflow'
+import type { WorkflowDefinition } from '@/types/workflow'
+import { NodeTypeEnum } from '@/types/workflow'
 import { normalizeWorkflowNode, denormalizeWorkflowNode } from '@/utils/node-type-utils'
 import { createUndoRedo } from '@/utils/undo-redo'
 
@@ -191,8 +192,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => {
 
   loadWorkflow: (workflow, status) => {
     // Denormalize workflow nodes from backend format (enum + subtype) to frontend format (specific type)
-    // Backend sends: { type: "ACTION", data: { config: { subtype: "send_webhook" } } }
-    // Frontend needs: { type: "send-webhook", data: { config: {...} } }
+    // Backend sends: { type: "ACTION", data: { config: { registryId: "action-id" } } }
+    // Frontend needs: { type: "transform", data: { config: { registryId: "action-id", ... } } }
+    // Note: Actions from registry use "transform" as placeholder type (identified by registryId)
     const denormalizedNodes = workflow.nodes.map(denormalizeWorkflowNode)
     
     // Convert workflow definition to react-flow format
@@ -236,7 +238,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => {
       name: state.workflowName,
       description: state.workflowDescription,
       nodes: state.nodes.map((node) => {
-        const nodeData = node.data as { type: WorkflowNodeType; label: string; config?: Record<string, unknown> }
+        const nodeData = node.data as { type: NodeTypeEnum; label: string; config?: Record<string, unknown> }
         return {
           id: node.id,
           type: nodeData.type,

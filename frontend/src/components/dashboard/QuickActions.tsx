@@ -1,6 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Workflow, FileText, Radio, BarChart3, ArrowRight } from "lucide-react"
+import { Workflow, BarChart3, ArrowRight } from "lucide-react"
 import { useNavigate, Link } from "react-router-dom"
 
 interface QuickAction {
@@ -19,18 +19,6 @@ export function QuickActions() {
       icon: <Workflow className="h-4 w-4" />,
       onClick: () => navigate("/workflows/new"),
       variant: "default",
-    },
-    {
-      label: "Create Template",
-      icon: <FileText className="h-4 w-4" />,
-      onClick: () => navigate("/templates/new"),
-      variant: "secondary",
-    },
-    {
-      label: "Add Channel",
-      icon: <Radio className="h-4 w-4" />,
-      onClick: () => navigate("/channels/new"),
-      variant: "outline",
     },
     {
       label: "View Analytics",

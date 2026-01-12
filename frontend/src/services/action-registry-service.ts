@@ -55,5 +55,28 @@ export const actionRegistryService = {
     const response = await apiClient.get<ActionRegistryResponse>("/actions/registry/custom")
     return response.data
   },
+
+  /**
+   * Create action definition in registry
+   */
+  create: async (data: ActionRegistryItem): Promise<ActionRegistryItem> => {
+    const response = await apiClient.post<ActionRegistryItem>("/actions/registry", data)
+    return response.data
+  },
+
+  /**
+   * Update action definition in registry
+   */
+  update: async (id: string, data: Partial<ActionRegistryItem>): Promise<ActionRegistryItem> => {
+    const response = await apiClient.put<ActionRegistryItem>(`/actions/registry/${id}`, data)
+    return response.data
+  },
+
+  /**
+   * Delete action definition from registry
+   */
+  delete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/actions/registry/${id}`)
+  },
 }
 

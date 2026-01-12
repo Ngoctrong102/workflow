@@ -76,6 +76,21 @@ Advanced features: async event aggregation, A/B testing, execution visualization
 - [Sprint 24](./sprint-24.md) - A/B Testing Service
 - [Sprint 25](./sprint-25.md) - Execution Visualization API
 
+### Phase 7: MVEL Expression System (Sprint 26-34)
+MVEL expression evaluation, output mapping, và integration.
+
+- [Sprint 26](./sprint-26.md) - Action Registry - Config Template Validation
+- [Sprint 27](./sprint-27.md) - Backend - MVEL Expression Evaluation (Planning only - chưa implement)
+- [Sprint 28](./sprint-28.md) - MVEL Infrastructure (MvelEvaluator, ExecutionContextBuilder) [NEW]
+- [Sprint 29](./sprint-29.md) - Action Schema Structure (DTOs, Entity Update) [NEW]
+- [Sprint 30](./sprint-30.md) - NodeConfig Structure (DTOs, Workflow Definition Update) [NEW]
+- [Sprint 31](./sprint-31.md) - Action Executors - MVEL Integration [NEW]
+- [Sprint 32](./sprint-32.md) - Output Mapping (OutputMappingApplier, ConfigValidator) [NEW]
+- [Sprint 33](./sprint-33.md) - Logic & Data Nodes - MVEL Support [NEW]
+- [Sprint 34](./sprint-34.md) - Template Migration (TemplateRenderer → MVEL) [NEW]
+
+**⚠️ IMPORTANT**: Xem [Implementation Gap Analysis](./implementation-gap-analysis.md) để biết những gì còn thiếu.
+
 ## Sprint Template Structure
 
 Each sprint file follows this structure:
@@ -147,10 +162,44 @@ com.notificationplatform
 - Handle exceptions properly
 - Add logging with SLF4J
 
+## Implementation Status
+
+**⚠️ CRITICAL**: Backend implementation còn thiếu nhiều components quan trọng so với design.
+
+Xem [Implementation Gap Analysis](./implementation-gap-analysis.md) để biết chi tiết những gì còn thiếu.
+
+### Quick Summary
+
+**Missing Critical Components**:
+- ❌ MVEL Expression System (hoàn toàn thiếu)
+- ❌ Output Mapping Mechanism (hoàn toàn thiếu)
+- ⚠️ Action Schema Structure (thiếu phần lớn)
+- ⚠️ NodeConfig Structure (chưa đúng design)
+- ⚠️ Action Executors (cần refactor lớn để dùng MVEL)
+
+**Current State**:
+- ✅ Basic workflow execution engine
+- ✅ Node executors (nhưng dùng old `${}` syntax)
+- ✅ Action Registry CRUD
+- ⚠️ Chưa có MVEL evaluation
+- ⚠️ Chưa có output mapping
+
+**Required Sprints** (28-34):
+- Sprint 28: MVEL Infrastructure
+- Sprint 29: Action Schema Structure
+- Sprint 30: NodeConfig Structure
+- Sprint 31: Action Executors - MVEL Integration
+- Sprint 32: Output Mapping
+- Sprint 33: Logic & Data Nodes - MVEL
+- Sprint 34: Template Migration
+
 ## Related Documentation
 
+- [Implementation Gap Analysis](./implementation-gap-analysis.md) - **ĐỌC NÀY TRƯỚC** - Chi tiết những gì còn thiếu
 - [Architecture Overview](../../architecture/overview.md)
 - [Database Schema](../../database-schema/)
 - [API Specifications](../../api/)
 - [Feature Specifications](../../features/)
 - [Backend Technical Guide](../../technical/backend/)
+- [MVEL Expression System](../../features/mvel-expression-system.md) - Design specification
+- [Action Execution](../../technical/backend/action-execution.md) - Implementation guide

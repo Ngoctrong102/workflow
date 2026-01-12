@@ -83,6 +83,10 @@ spring:
         max-active: 8
         max-idle: 8
         min-idle: 0
+  
+  # Temporarily disable cache - use database directly
+  cache:
+    type: none
 
 server:
   port: ${SERVER_PORT:8080}

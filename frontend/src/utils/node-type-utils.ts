@@ -1,164 +1,165 @@
-import { NodeTypeEnum, type WorkflowNodeType } from "@/types/workflow"
+import { NodeTypeEnum, NodeTypeEnumHelpers } from "@/types/workflow"
 import type { WorkflowNode, WorkflowDefinition } from "@/types/workflow"
 
 /**
- * Utility functions for working with node types and ensuring compatibility with backend enum
+ * Utility functions for working with node types
+ * Backend enum only has 3 values: TRIGGER, LOGIC, ACTION
+ * Nodes are identified by:
+ * - Trigger nodes: triggerConfigId in node.data.config
+ * - Action nodes: registryId in node.data.config
+ * - Logic nodes: subtype in node.data.config (when re-implemented)
  */
 
 /**
  * Validate that a node type string is valid according to backend enum
- * Backend uses enum NodeType for validation, but node.type in definition is still string (kebab-case)
  */
 export function isValidNodeType(type: string): boolean {
-  // Check if it's a valid WorkflowNodeType (specific types like "api-trigger", "send-email", etc.)
-  // These are the actual node types used in workflow definitions
-  const validTypes: WorkflowNodeType[] = [
-    // Trigger types
-    "api-trigger",
-    "schedule-trigger",
-    "file-trigger",
-    "event-trigger",
-    // Action types
-    "send-email",
-    "send-sms",
-    "send-push",
-    "send-in-app",
-    "send-slack",
-    "send-discord",
-    "send-teams",
-    "send-webhook",
-    // Logic types
-    "condition",
-    "switch",
-    "loop",
-    "delay",
-    "merge",
-    "ab-test",
-    "wait-events",
-    // Data types
-    "map",
-    "filter",
-    "transform",
-    "read-file",
-  ]
-  
-  return validTypes.includes(type as WorkflowNodeType)
+  return NodeTypeEnumHelpers.isValid(type)
 }
 
 /**
- * Get the category enum for a node type
- * Maps specific node types to their category enum (TRIGGER, ACTION, LOGIC, DATA, WAIT_EVENTS)
+ * Determine node category based on nodeType enum only
+ * Backend enum has 3 values: TRIGGER, LOGIC, ACTION
+ * This function only checks the nodeType enum value, ignoring config IDs
  */
-export function getNodeCategoryEnum(type: WorkflowNodeType): NodeTypeEnum | null {
-  // Trigger types
-  if (type === "api-trigger") return NodeTypeEnum.API_TRIGGER
-  if (type === "schedule-trigger") return NodeTypeEnum.SCHEDULE_TRIGGER
-  if (type === "file-trigger") return NodeTypeEnum.FILE_TRIGGER
-  if (type === "event-trigger") return NodeTypeEnum.EVENT_TRIGGER
+export function getNodeCategory(
+  nodeType: string,
+  config?: Record<string, unknown>
+): NodeTypeEnum {
+  // First check config for triggerConfigId or registryId to determine category
+  // This is more reliable than nodeType alone
+  if (config) {
+    const triggerConfigId = config.triggerConfigId as string | undefined
+    const registryId = config.registryId as string | undefined
+    
+    // If triggerConfigId exists, it's a trigger node
+    if (triggerConfigId) {
+      return NodeTypeEnum.TRIGGER
+    }
+    
+    // If registryId exists without triggerConfigId, it's an action node
+    if (registryId) {
+      return NodeTypeEnum.ACTION
+    }
+  }
   
-  // Action types
-  if (type.startsWith("send-")) return NodeTypeEnum.ACTION
-  
-  // Logic types
-  if (["condition", "switch", "loop", "delay", "merge", "ab-test"].includes(type)) {
+  // Fallback to nodeType enum value
+  if (nodeType === NodeTypeEnum.TRIGGER) {
+    return NodeTypeEnum.TRIGGER
+  }
+  if (nodeType === NodeTypeEnum.ACTION) {
+    return NodeTypeEnum.ACTION
+  }
+  if (nodeType === NodeTypeEnum.LOGIC) {
     return NodeTypeEnum.LOGIC
   }
-  if (type === "wait-events") return NodeTypeEnum.WAIT_EVENTS
   
-  // Data types
-  if (["map", "filter", "transform", "read-file"].includes(type)) {
-    return NodeTypeEnum.DATA
-  }
-  
-  return null
+  // Default fallback to ACTION if nodeType doesn't match any enum value
+  return NodeTypeEnum.ACTION
 }
 
 /**
- * Convert specific node type (e.g., "send-webhook", "send-email") to backend enum value (e.g., "ACTION")
- * Backend expects node.type to be enum value, and subtype to be in node.data.config.subtype
+ * Check if a node is a trigger node
  */
-export function convertToBackendNodeType(type: WorkflowNodeType): string {
-  // Trigger types - map to specific enum values
-  if (type === "api-trigger") return "API_TRIGGER"
-  if (type === "schedule-trigger") return "SCHEDULE_TRIGGER"
-  if (type === "file-trigger") return "FILE_TRIGGER"
-  if (type === "event-trigger") return "EVENT_TRIGGER"
-  
-  // Action types - all map to ACTION
-  if (type.startsWith("send-")) return "ACTION"
-  
-  // Logic types - map to LOGIC
-  if (["condition", "switch", "loop", "delay", "merge", "ab-test"].includes(type)) {
-    return "LOGIC"
-  }
-  
-  // Wait events - specific enum
-  if (type === "wait-events") return "WAIT_EVENTS"
-  
-  // Data types - map to DATA
-  if (["map", "filter", "transform", "read-file"].includes(type)) {
-    return "DATA"
-  }
-  
-  // Fallback - return as-is (should not happen if isValidNodeType is used)
-  console.warn(`Unknown node type: ${type}, returning as-is`)
-  return type.toUpperCase().replace(/-/g, "_")
+export function isTriggerNode(
+  nodeType: string,
+  config?: Record<string, unknown>
+): boolean {
+  return getNodeCategory(nodeType, config) === NodeTypeEnum.TRIGGER
+}
+
+/**
+ * Check if a node is an action node
+ */
+export function isActionNode(
+  nodeType: string,
+  config?: Record<string, unknown>
+): boolean {
+  return getNodeCategory(nodeType, config) === NodeTypeEnum.ACTION
+}
+
+/**
+ * Check if a node is a logic node
+ */
+export function isLogicNode(
+  nodeType: string,
+  config?: Record<string, unknown>
+): boolean {
+  return getNodeCategory(nodeType, config) === NodeTypeEnum.LOGIC
+}
+
+/**
+ * Check if a node type string is a trigger type (legacy - use isTriggerNode instead)
+ * This is kept for backward compatibility with some components
+ */
+export function isTriggerNodeType(type: string): boolean {
+  return type === NodeTypeEnum.TRIGGER
 }
 
 /**
  * Validate and normalize a workflow node to ensure it's compatible with backend
- * Converts node.type from specific type (e.g., "send-webhook") to enum value (e.g., "ACTION")
- * and stores the original type in node.data.config.subtype
+ * Ensures node.type is one of: TRIGGER, LOGIC, ACTION
  */
-export function normalizeWorkflowNode(node: WorkflowNode): WorkflowNode & { type: string } {
+export function normalizeWorkflowNode(node: WorkflowNode): WorkflowNode {
   // Validate node type
   if (!isValidNodeType(node.type)) {
-    console.warn(`Invalid node type: ${node.type}. Keeping as-is but may cause backend validation errors.`)
-    return node as WorkflowNode & { type: string }
+    console.warn(`Invalid node type: ${node.type}. Defaulting to ACTION.`)
+    return {
+      ...node,
+      type: NodeTypeEnum.ACTION,
+    }
   }
   
-  // Convert to backend enum value
-  const backendNodeType = convertToBackendNodeType(node.type)
+  // Ensure node.type is a valid enum value
+  const nodeData = node.data as any
+  const config = { ...(nodeData?.config || {}) }
+  const triggerConfigId = config.triggerConfigId as string | undefined
+  const registryId = config.registryId as string | undefined
   
-  // Ensure config exists
-  const config = node.data.config || {}
+  // Determine correct node type based on config
+  let correctType: NodeTypeEnum
+  if (triggerConfigId) {
+    correctType = NodeTypeEnum.TRIGGER
+  } else if (registryId) {
+    correctType = NodeTypeEnum.ACTION
+  } else {
+    // Use node.type if it's valid, otherwise default to ACTION
+    correctType = isValidNodeType(node.type) ? (node.type as NodeTypeEnum) : NodeTypeEnum.ACTION
+  }
   
-  // Store original type as subtype in config (backend uses this)
-  // Convert kebab-case to snake_case for backend (e.g., "send-webhook" -> "send_webhook")
-  const subtype = node.type.replace(/-/g, "_")
+  // Ensure config exists (preserve existing config)
+  const normalizedConfig = { ...config }
   
-  // Only set subtype if it's different from the enum value (i.e., for specific types)
-  // For example, "send-webhook" needs subtype, but "ACTION" enum doesn't need it
-  const needsSubtype = node.type !== backendNodeType.toLowerCase().replace(/_/g, "-")
+  // For nodes with registryId/triggerConfigId, ensure they're in config
+  if (triggerConfigId) {
+    normalizedConfig.triggerConfigId = triggerConfigId
+  }
+  if (registryId) {
+    normalizedConfig.registryId = registryId
+  }
   
   return {
     ...node,
-    type: backendNodeType, // Backend expects enum string value like "ACTION", "LOGIC", etc.
+    type: correctType,
     data: {
-      ...node.data,
-      config: needsSubtype ? { ...config, subtype } : config,
+      ...nodeData,
+      config: Object.keys(normalizedConfig).length > 0 ? normalizedConfig : undefined,
     },
-  } as WorkflowNode & { type: string }
+  }
 }
 
 /**
  * Validate and normalize a workflow definition to ensure all nodes are compatible with backend
- * Returns a definition where node.type is backend enum value (e.g., "ACTION") instead of specific type (e.g., "send-webhook")
  */
-export function normalizeWorkflowDefinition(definition: WorkflowDefinition): WorkflowDefinition & {
-  nodes: Array<WorkflowNode & { type: string }>
-} {
+export function normalizeWorkflowDefinition(definition: WorkflowDefinition): WorkflowDefinition {
   return {
     ...definition,
     nodes: definition.nodes.map(normalizeWorkflowNode),
-  } as WorkflowDefinition & {
-    nodes: Array<WorkflowNode & { type: string }>
   }
 }
 
 /**
  * Validate a workflow definition before sending to backend
- * Returns validation errors if any nodes have invalid types
  */
 export function validateWorkflowDefinition(definition: WorkflowDefinition): {
   isValid: boolean
@@ -179,105 +180,41 @@ export function validateWorkflowDefinition(definition: WorkflowDefinition): {
 }
 
 /**
- * Check if a node type is a trigger type
- */
-export function isTriggerNodeType(type: string): boolean {
-  return type === "api-trigger" || 
-         type === "event-trigger" || 
-         type === "schedule-trigger" || 
-         type === "file-trigger"
-}
-
-/**
- * Check if a node type is an action type
- */
-export function isActionNodeType(type: string): boolean {
-  return type.startsWith("send-")
-}
-
-/**
- * Check if a node type is a logic type
- */
-export function isLogicNodeType(type: string): boolean {
-  return ["condition", "switch", "loop", "delay", "merge", "ab-test", "wait-events"].includes(type)
-}
-
-/**
- * Check if a node type is a data type
- */
-export function isDataNodeType(type: string): boolean {
-  return ["map", "filter", "transform", "read-file"].includes(type)
-}
-
-/**
- * Convert backend enum value + subtype back to frontend specific node type
+ * Convert backend enum value back to frontend (no conversion needed, they're the same)
  * Used when loading workflow from backend
- * Example: "ACTION" + subtype "send_webhook" -> "send-webhook"
  */
-export function convertFromBackendNodeType(
-  backendType: string,
-  subtype?: string
-): WorkflowNodeType {
-  // If subtype exists, use it (convert snake_case to kebab-case)
-  if (subtype) {
-    const kebabCaseSubtype = subtype.replace(/_/g, "-") as WorkflowNodeType
-    if (isValidNodeType(kebabCaseSubtype)) {
-      return kebabCaseSubtype
-    }
-  }
+export function convertFromBackendNodeType(backendType: string): NodeTypeEnum {
+  if (backendType === NodeTypeEnum.TRIGGER) return NodeTypeEnum.TRIGGER
+  if (backendType === NodeTypeEnum.ACTION) return NodeTypeEnum.ACTION
+  if (backendType === NodeTypeEnum.LOGIC) return NodeTypeEnum.LOGIC
   
-  // Map enum values back to specific types
-  const upperType = backendType.toUpperCase()
-  
-  if (upperType === "API_TRIGGER") return "api-trigger"
-  if (upperType === "SCHEDULE_TRIGGER") return "schedule-trigger"
-  if (upperType === "FILE_TRIGGER") return "file-trigger"
-  if (upperType === "EVENT_TRIGGER") return "event-trigger"
-  if (upperType === "WAIT_EVENTS") return "wait-events"
-  
-  // For ACTION, LOGIC, DATA - we need subtype to know the specific type
-  // If no subtype, return a default (this shouldn't happen in practice)
-  if (upperType === "ACTION") {
-    console.warn(`ACTION node without subtype, defaulting to "send-email"`)
-    return "send-email" // Default fallback
-  }
-  if (upperType === "LOGIC") {
-    console.warn(`LOGIC node without subtype, defaulting to "condition"`)
-    return "condition" // Default fallback
-  }
-  if (upperType === "DATA") {
-    console.warn(`DATA node without subtype, defaulting to "map"`)
-    return "map" // Default fallback
-  }
-  
-  // Fallback - try to convert enum name to kebab-case
-  return backendType.toLowerCase().replace(/_/g, "-") as WorkflowNodeType
+  // Default to ACTION if unknown
+  console.warn(`Unknown backend node type: ${backendType}, defaulting to ACTION`)
+  return NodeTypeEnum.ACTION
 }
 
 /**
  * Denormalize a workflow node loaded from backend
- * Converts backend enum value (e.g., "ACTION") + subtype back to frontend specific type (e.g., "send-webhook")
+ * Preserves triggerConfigId and registryId from config
  */
 export function denormalizeWorkflowNode(node: WorkflowNode): WorkflowNode {
   const backendType = node.type
-  const subtype = node.data.config?.subtype as string | undefined
   
-  // Convert back to frontend specific type
-  const frontendType = convertFromBackendNodeType(backendType, subtype)
+  // Convert back to frontend type (no conversion needed, they're the same)
+  const frontendType = convertFromBackendNodeType(backendType)
   
-  // Remove subtype from config if it exists (we don't need it in frontend)
+  // Preserve config
   const config = { ...node.data.config }
-  if (config.subtype) {
-    delete config.subtype
-  }
+  
+  // Ensure config is preserved even if empty (for nodes with triggerConfigId/registryId)
+  const hasRegistryFields = config.triggerConfigId || config.registryId
   
   return {
     ...node,
     type: frontendType,
     data: {
       ...node.data,
-      config: Object.keys(config).length > 0 ? config : undefined,
+      config: (Object.keys(config).length > 0 || hasRegistryFields) ? config : undefined,
     },
   }
 }
-

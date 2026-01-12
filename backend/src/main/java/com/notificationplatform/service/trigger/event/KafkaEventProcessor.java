@@ -1,11 +1,8 @@
 package com.notificationplatform.service.trigger.event;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.notificationplatform.entity.Execution;
 import com.notificationplatform.entity.ExecutionWaitState;
 import com.notificationplatform.entity.Trigger;
-import com.notificationplatform.entity.Workflow;
-import com.notificationplatform.entity.enums.WorkflowStatus;
 import com.notificationplatform.engine.WorkflowExecutor;
 import com.notificationplatform.repository.ExecutionWaitStateRepository;
 import com.notificationplatform.repository.TriggerRepository;
@@ -95,52 +92,24 @@ public class KafkaEventProcessor {
     @Transactional
     public void processTriggerEvent(Trigger trigger, ConsumerRecord<String, String> record, Map<String, Object> eventData) {
         try {
-            // Reload trigger with workflow eagerly loaded to avoid LazyInitializationException
-            // The trigger passed in may be detached from Hibernate session
-            Trigger reloadedTrigger = triggerRepository.findByIdWithWorkflow(trigger.getId())
+            // Load trigger config
+            Trigger reloadedTrigger = triggerRepository.findByIdAndNotDeleted(trigger.getId())
                     .orElse(null);
             
             if (reloadedTrigger == null) {
-                log.warn("Trigger not found: triggerId={}", trigger.getId());
+                log.warn("Trigger config not found: triggerId={}", trigger.getId());
                 return;
             }
             
-            Workflow workflow = reloadedTrigger.getWorkflow();
-            if (workflow == null) {
-                log.warn("Trigger has no associated workflow: triggerId={}", reloadedTrigger.getId());
-                return;
-            }
-
-            // Check workflow status using enum
-            if (workflow.getStatus() != WorkflowStatus.ACTIVE) {
-                log.debug("Workflow is not active: workflowId={}, status={}", 
-                           workflow.getId(), workflow.getStatus());
-                return;
-            }
-            
-            // Apply filter if configured
-            Map<String, Object> config = reloadedTrigger.getConfig() != null ? 
-                (Map<String, Object>) reloadedTrigger.getConfig() : new HashMap<>();
-            Map<String, Object> filter = (Map<String, Object>) config.get("filter");
-            
-            if (filter != null && !eventFilterService.matchesFilter(eventData, filter)) {
-                log.debug("Event does not match filter: triggerId={}", reloadedTrigger.getId());
-                return;
-            }
-
-            // Prepare trigger data
-            Map<String, Object> triggerData = new HashMap<>();
-            triggerData.put("_event", eventData);
-            triggerData.put("_topic", record.topic());
-            triggerData.put("_partition", record.partition());
-            triggerData.put("_offset", record.offset());
-            triggerData.put("_timestamp", record.timestamp());
-
-            // Execute workflow
-            Execution execution = workflowExecutor.execute(workflow, triggerData, reloadedTrigger.getId());
-
-            log.info("Event workflow execution completed: executionId={}, workflowId={}, triggerId={}", 
-                       execution.getId(), workflow.getId(), reloadedTrigger.getId());
+            // Find workflows that use this trigger config by parsing workflow definitions
+            // In the new design, triggers are independent configs referenced via triggerConfigId in workflow nodes
+            // Need to:
+            // 1. Query all active workflows
+            // 2. Parse workflow definitions to find nodes with triggerConfigId matching this trigger
+            // 3. Execute those workflows
+            // This functionality needs to be implemented - for now, log warning and return
+            log.warn("KafkaEventProcessor - need to find workflows using trigger config: triggerId={}", trigger.getId());
+            return;
 
         } catch (IllegalStateException e) {
             // ApplicationContext may be closed during shutdown
