@@ -53,6 +53,8 @@ export default function TriggerRegistryEditorPage() {
 
   const triggerType = watch("type")
   const isEventTrigger = triggerType === "event"
+  // Watch configTemplate at top level to ensure re-renders when it changes
+  const configTemplate = watch("configTemplate") || {}
 
   // Load trigger data when editing
   useEffect(() => {
@@ -149,8 +151,9 @@ export default function TriggerRegistryEditorPage() {
   }
 
   const handleSchemasChange = (schemas: SchemaDefinition[]) => {
-    const currentConfig = watch("configTemplate") || {}
     // Preserve all existing config fields (kafka, etc.) when updating schemas
+    // Use the watched configTemplate to ensure we have the latest value
+    const currentConfig = watch("configTemplate") || {}
     setValue("configTemplate", {
       ...currentConfig,
       schemas,
@@ -214,7 +217,7 @@ export default function TriggerRegistryEditorPage() {
   }
 
   // Get schemas from configTemplate, ensure it's always an array
-  const configTemplate = watch("configTemplate") || {}
+  // Note: configTemplate is already watched at top level, so we can use it directly here
   const currentSchemas = (Array.isArray(configTemplate.schemas) ? configTemplate.schemas : []) as SchemaDefinition[]
   
   // Debug logging
@@ -373,17 +376,15 @@ export default function TriggerRegistryEditorPage() {
                   <Textarea
                     id="kafka-brokers"
                     value={(() => {
-                      const configTemplate = watch("configTemplate") || {}
                       const brokers = (configTemplate.kafka as any)?.brokers || []
                       return Array.isArray(brokers) ? brokers.join('\n') : ''
                     })()}
                     onChange={(e) => {
                       const brokers = e.target.value.split('\n').map(s => s.trim()).filter(s => s.length > 0)
-                      const currentConfig = watch("configTemplate") || {}
                       setValue("configTemplate", {
-                        ...currentConfig,
+                        ...configTemplate,
                         kafka: {
-                          ...(currentConfig.kafka || {}),
+                          ...(configTemplate.kafka || {}),
                           brokers,
                         },
                       }, { shouldDirty: true })
@@ -401,16 +402,12 @@ export default function TriggerRegistryEditorPage() {
                   <Label htmlFor="kafka-topic">Topic/Queue Name</Label>
                   <Input
                     id="kafka-topic"
-                    value={(() => {
-                      const configTemplate = watch("configTemplate") || {}
-                      return (configTemplate.kafka as any)?.topic || ""
-                    })()}
+                    value={(configTemplate.kafka as any)?.topic || ""}
                     onChange={(e) => {
-                      const currentConfig = watch("configTemplate") || {}
                       setValue("configTemplate", {
-                        ...currentConfig,
+                        ...configTemplate,
                         kafka: {
-                          ...(currentConfig.kafka || {}),
+                          ...(configTemplate.kafka || {}),
                           topic: e.target.value,
                         },
                       }, { shouldDirty: true })
@@ -423,16 +420,12 @@ export default function TriggerRegistryEditorPage() {
                 <div className="space-y-2">
                   <Label htmlFor="kafka-offset">Offset Reset</Label>
                   <Select
-                    value={(() => {
-                      const configTemplate = watch("configTemplate") || {}
-                      return (configTemplate.kafka as any)?.offset || "latest"
-                    })()}
+                    value={(configTemplate.kafka as any)?.offset || "latest"}
                     onValueChange={(value) => {
-                      const currentConfig = watch("configTemplate") || {}
                       setValue("configTemplate", {
-                        ...currentConfig,
+                        ...configTemplate,
                         kafka: {
-                          ...(currentConfig.kafka || {}),
+                          ...(configTemplate.kafka || {}),
                           offset: value,
                         },
                       }, { shouldDirty: true })
@@ -456,14 +449,10 @@ export default function TriggerRegistryEditorPage() {
                   <Label htmlFor="cron-expression">Cron Expression</Label>
                   <Input
                     id="cron-expression"
-                    value={(() => {
-                      const configTemplate = watch("configTemplate") || {}
-                      return (configTemplate as any).cronExpression || ""
-                    })()}
+                    value={(configTemplate as any).cronExpression || ""}
                     onChange={(e) => {
-                      const currentConfig = watch("configTemplate") || {}
                       setValue("configTemplate", {
-                        ...currentConfig,
+                        ...configTemplate,
                         cronExpression: e.target.value,
                       }, { shouldDirty: true })
                     }}
@@ -478,14 +467,10 @@ export default function TriggerRegistryEditorPage() {
                   <Label htmlFor="timezone">Timezone</Label>
                   <Input
                     id="timezone"
-                    value={(() => {
-                      const configTemplate = watch("configTemplate") || {}
-                      return (configTemplate as any).timezone || "UTC"
-                    })()}
+                    value={(configTemplate as any).timezone || "UTC"}
                     onChange={(e) => {
-                      const currentConfig = watch("configTemplate") || {}
                       setValue("configTemplate", {
-                        ...currentConfig,
+                        ...configTemplate,
                         timezone: e.target.value,
                       }, { shouldDirty: true })
                     }}
@@ -501,14 +486,10 @@ export default function TriggerRegistryEditorPage() {
                   <Label htmlFor="endpoint-path">Endpoint Path</Label>
                   <Input
                     id="endpoint-path"
-                    value={(() => {
-                      const configTemplate = watch("configTemplate") || {}
-                      return (configTemplate as any).endpointPath || ""
-                    })()}
+                    value={(configTemplate as any).endpointPath || ""}
                     onChange={(e) => {
-                      const currentConfig = watch("configTemplate") || {}
                       setValue("configTemplate", {
-                        ...currentConfig,
+                        ...configTemplate,
                         endpointPath: e.target.value,
                       }, { shouldDirty: true })
                     }}
@@ -519,14 +500,10 @@ export default function TriggerRegistryEditorPage() {
                 <div className="space-y-2">
                   <Label htmlFor="http-method">HTTP Method</Label>
                   <Select
-                    value={(() => {
-                      const configTemplate = watch("configTemplate") || {}
-                      return (configTemplate as any).httpMethod || "POST"
-                    })()}
+                    value={(configTemplate as any).httpMethod || "POST"}
                     onValueChange={(value) => {
-                      const currentConfig = watch("configTemplate") || {}
                       setValue("configTemplate", {
-                        ...currentConfig,
+                        ...configTemplate,
                         httpMethod: value,
                       }, { shouldDirty: true })
                     }}
